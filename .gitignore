@@ -7,6 +7,10 @@ Task/
 src-tauri/target/
 src-tauri/gen/schemas/
 
+# tauri icon 每次都会顺带生成的移动端图标（本项目只出 Windows 桌面）
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
 # 其他
 dev.log
 
