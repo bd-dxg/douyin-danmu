@@ -1,118 +1,120 @@
 # douyin-danmu 开发指南
 
-> ⚠️ **本文件是从 `bili-danmu` 复制的，还没改写完成。** 下面凡提到 B 站协议、扫码登录、舰队/勋章的内容对抖音**不适用**，请以这两个为准：
->
-> - `Task/task_plan.md` —— 阶段与待办（当前进度）
-> - `Task/findings.md` + `probe/README.md` —— 抖音协议实测结论与坑
->
-> 待办（阶段 7）：把本文件与 `CONTEXT.md`、`README.md`、`docs/技术说明.md` 重写为抖音版。
+抖音直播弹幕桌面助手（Windows）：连接抖音直播间 → 实时接收弹幕 / 礼物 / 进场 → 桌面透明悬浮层显示 + 可选 Edge TTS 朗读，供 OBS 推流主播看/听弹幕。
 
-## 项目概览
+- **协议实测结论与坑**：`probe/README.md`（含字段号权威表、复跑探针的命令）
+- **功能状态与规划**：`docs/技术说明.md`（**以它为准**）；本文件写约定与注意事项
+- 本项目的骨架与 UI 派生自 [bili-danmu](https://github.com/bddxg/bili-danmu)，协议层整个换成抖音；对照物在 `D:\code\githubpro\bili-danmu`
 
-轻量级 B 站直播弹幕桌面助手（Windows）：连接 B 站直播间 → 获取实时弹幕 → 在桌面透明悬浮层（Overlay）显示 + 可选 Edge TTS 朗读，供 OBS 推流主播看/听弹幕。Tauri 2 多窗口架构：主窗口（配置）+ 透明悬浮窗（Overlay）+ 发送弹幕框（Sender，始终吸附 Overlay 下方）。
+## 与 B 站版的根本差异（先看这几条，能省很多弯路）
 
-## 礼物系统与欢迎信息（均已上线）
-
-打赏（礼物 / SC / 上舰）的**弹幕窗渲染**与**朗读**都已上线：解析 → 金额门槛 + 连击合并（`src-tauri/src/gift.rs`）→ 弹幕窗内独立礼物区（弹幕列表上方）；朗读侧另算一遍门槛与连击（`src-tauri/src/tts/gift.rs`）→ 插队送进 Edge TTS 队列。
-
-- 解析：`parser.rs` 把 `SEND_GIFT` / `COMBO_SEND` / `SUPER_CHAT_MESSAGE` / `GUARD_BUY` 解成 `BilibiliEvent::Backing`；金额统一折算成整数「分」（`amount_fen`，金瓜子 1000 = 1 元），免费礼物（银瓜子 / 零价）直接返回 None
-- `COMBO_SEND` **只当连击仍在继续的信号**（延长合并窗口），数量与金额一律以 `SEND_GIFT` 为准——两路事件同时下发，两边都计就重复；它是否带价格字段未实测（用 `scripts/ws-probe.ps1` 验证）
-- 门槛与连击合并都在 Rust（`gift::on_backing`）：门槛按**累加后的总额**判定，未过门槛的连击先攒在分组里；同人同礼物在 `combo_window_secs` 内合并成一行，行 id = 分组键 + 首次时间戳，前端按 id **覆盖**更新（位置不变）
-- 渲染：`GiftRow.vue` + `MetaBadges.vue`。徽章列抽成 `MetaBadges` 是**故意共用**的——`role-slot` 宽度与 `--role-indent` / 发送框左缩进（`window.rs` `sender_layout_metrics`）同源，复制一份 CSS 后改单侧就会错位；`row-style.ts` 同理（两行共用描边计算）。**礼物行不显示粉丝牌**：粉丝牌由弹幕行组装成 `medal` 对象传入，礼物行不传就不渲染（打赏行已有用户名与礼物名）；打赏事件（`Backing`）因此不再下发 `medal_*` 字段，前端也不再有 `DisplayBacking`，礼物行直接用 `BackingEvent`
-- 设置项在「主播分区 → 礼物渲染」标签：开关 / 金额门槛 / 条数上限 / 合并窗口
-- 礼物朗读（`tts/gift.rs` + `tts::on_backing`）：文案「感谢老板A送的5个辣条」/ SC 念留言正文（超 50 字截断）/ 上舰念档位；**插队**走 `TtsState::push_front`（排到待朗读弹幕之前），语义是「当前这条念完马上接」，**不**掐正在念的那条
-- 礼物朗读**自己**按「用户 + 礼物」累加一遍，**不复用** `gift.rs` 的分组表：渲染侧只在过渲染门槛时才产出累计行，而朗读门槛与它独立（`GiftTtsConfig`，可更低）；连击静默满一个窗口才念一次，窗口沿用 `GiftConfig::combo_window_secs`（`tts::combo_window` 真接读 `OverlayState.gift`，改窗口只需改一处）；定时器是常驻轮询任务（`spawn_gift_timer`，1 秒一跳：按窗口整跳会让汇总最多晚一个窗口）
-- 队列丢弃只丢**弹幕**（`tts/mod.rs` `push` 找最前的非 force 项）：插队的礼物在队首，直接 `pop_front` 会被下一条弹幕顶掉——高频直播间每秒几十条，上舰/醒目留言这种只来一次的大额插队后一条都活不到开播；熔断退避与总开关关闭同样只 retain 非 force 项
-- 礼物朗读开关独立于弹幕朗读总开关与礼物区开关：进队时带 `force = true`（与试听同一语义），总开关关掉也照念；入队后按时念完；`set_config` 关闭总开关时只 retain 非 force 项（不偷删试听与礼物），`worker.rs` 的 epoch 作废与 `stop_now` 两道拦截也都跳过 force 项。设置项在「主播分区 → 礼物朗读」标签
-- 未做：礼物图标（渲染层已留扩展位）
-- 待验证：`rnd` 去重未做——重连后服务端若重推同一条 `SEND_GIFT`，窗口内会重复累加，数量与金额翻倍
-
-## 欢迎信息（进房 / 关注 / 分享 / 点赞 / 舰长进场）
-
-五个 cmd 解成 `BilibiliEvent::Welcome` → `welcome.rs` 去重限速 → 两个独立消费者（渲染 / 朗读）。
-
-- 解析（`parser.rs`，字段号全部实测得出，见 `Task/findings.md`）：
-  - `INTERACT_WORD_V2` —— **不是 JSON 是 base64 protobuf**（`1`=uid、`2`=用户名、`5`=msg_type、`7`=时间戳秒），msg_type `1/2/3` → 进房 / 关注 / 分享，其余取值不猜语义直接丢。`INTERACT_WORD`（V1）已不存在
-  - `LIKE_INFO_V3_CLICK` —— 单次点赞，纯 JSON，`uinfo.guard.level` 直接可读
-  - `LIKE_INFO_V3_UPDATE` —— 只有累计点赞总数（`click_count`），**不是事件**，故意不解析
-  - `ENTRY_EFFECT` —— 舰长 / 提督 / 总督进场，**按 `uinfo.guard.level > 0` 过滤**：实测荣耀等级高的普通观众也会触发这条，不过滤会把「上舰欢迎」做成「高等级观众欢迎」
-- **进房事件里没有 guard_level**（60 个样本全字段扫描确认）：`22.4.1` 那个 1..33 的值是等级不是舰队，所以「只看舰长以上」不能挂进房，只能挂 `ENTRY_EFFECT`
-- 限速（`welcome.rs`）：同人同类 60 秒去重 + **每 30 秒最多 1 条**；额度是「普通形态一个大池 + 舰长进场一个小池」，**不分形态各一份**——分形态等于 4 类各一份（二十几条/分钟），比中位房间的弹幕（实测 10 条/分钟）还密，那就是刷屏。舰长进场也没真豁免：热度房里实测 `ENTRY_EFFECT` 有 10 条/分钟，真豁免会反超弹幕
-- 量级实测：进房 : 弹幕在 **1.5 : 1 ~ 10 : 1** 之间（狼人杀 58 万在线是 160 : 103，另一间 1.1 万在线的是 103 : 10——后者弹幕特别稀，比值被拉大）。**占比 ∝ 1/弹幕速率**：房间越热，欢迎信息占比越小，所以「热度房怕刷屏」这个直觉是反的；真正的代价是限速后只剩 2% 左右的采样，读不出「谁来了」
-- 去重限速**与开关无关地先跑**（`welcome::on_welcome`）：开关只决定「谁来消费」。若让开关去挡限速，关掉渲染时舰长进场就能绕过去重表，同一个舰长每次进出都被重复念
-- 渲染：复用**系统提示行**形态（`OverlayApp` 的 `pushRow`，与「已进入直播间…」同一形态）——不显示用户名与徽章，不动 `row-style.ts` / `MetaBadges` 的共用契约，也不影响发送框吸附。正文颜色由「用户名颜色」偏移 30° 色相派生（`row-style.ts::shiftHue`）：颜色跟着主题走又与弹幕用户名不同；**只动色相不降亮度**（窗口背景多是游戏画面，降亮度会糊），也不用 CSS `filter: hue-rotate()`（会给每行开合成层）
-- 朗读（`tts::on_welcome` + `tts/text.rs::build_welcome_text`）：只念舰长进场，文案「欢迎舰长 老板A进入直播间」。**档位要念**（不念的话听起来就是「欢迎某某进入直播间」，分不出总督和舰长），档位与用户名之间留一个空格——与弹幕朗读的身份前缀同一种分隔做法。排到**队尾**（不像礼物那样插队、不抢弹幕额度），但 `force = true`：有自己的开关，不被「弹幕朗读」总开关静音
-- 设置项在「主播分区 → 欢迎信息」标签，显示与朗读**均默认关**：这类事件量级比弹幕大，且在热度房限速后信息量很低，由主播按房间情况自己开
+| 维度 | 抖音 | 说明 |
+|---|---|---|
+| 房间号 | 用户输入**短号**（`live.douyin.com/` 后面那串），WS 只认 19 位 `room_id` | 短号 → room_id 由 `douyin::resolver` 换；抖音的号 `u32` 装不下，全链路是 `String` |
+| 握手 | cookie 必须带 `ttwid` + URL 上带 `signature`(X-Bogus) | 签名要跑 webmssdk 的 JS（隐藏 WebView2）；登录 cookie 只能**合并**进去，不能替换掉 ttwid |
+| 收帧 | 收到帧**必须回 ack** | 不回则服务端每 1–2 秒重推同一帧、cursor 不推进 |
+| 心跳 | 10 秒 | 发一个 `PushFrame{f8=gzip(空)}` |
+| 登录 | **只为礼物**：弹幕 / 进场 / 关注 / 点赞匿名就能收 | 礼物必须登录态（实测同房间：匿名 180 秒 0 条 / 登录 120 秒 8 条） |
+| 打赏形态 | **只有礼物** | 没有醒目留言、没有舰队；免费礼物（钻石价 0）不算打赏 |
+| 连击数量 | 服务端下发的是**累计值**（`combo_count`） | 本地**不要**再累加，否则连击数会变成平方 |
+| 身份 | 只有「用户等级（荣誉等级）」+「粉丝团（灯牌）等级」 | 没有房管 / 舰队 / 荣耀等级 / 粉丝牌名 |
+| 发送弹幕 | 首期不做 | 要另一套签名（a_bogus）+ 登录 cookie；发送框目前是禁用态提示 |
 
 ## 技术栈
 
 - 前端：Vue 3（`<script setup>`）+ Vite + TypeScript，包管理 pnpm
 - 桌面壳：Tauri 2（Rust，edition 2021）
-- Rust 关键依赖：tokio / reqwest（json、gzip；登录 Cookie 全程显式 header 传递）/ tokio-tungstenite（弹幕 WebSocket + Edge TTS WebSocket）/ native-tls（Edge TTS 自建 TCP 后显式包 TLS）/ futures-util（WS 收发）/ brotli-decompressor + flate2（弹幕包解压）/ md-5（WBI 签名）/ sha2（Edge TTS 的 Sec-MS-GEC 令牌）/ windows-sys（登录 Cookie 的 Windows DPAPI 加密、TTS 的 winmm MCI 播放）/ tauri-plugin-log（统一日志落盘，业务代码经 `log` 门面宏调用）
+- Rust 关键依赖：tokio / reqwest（json、gzip）/ tokio-tungstenite（弹幕 WS + Edge TTS WS）/ native-tls（Edge TTS 自建 TCP 后包 TLS）/ futures-util / flate2（弹幕 gzip）/ md-5（签名素材）/ sha2（Edge TTS 的 Sec-MS-GEC）/ windows-sys（DPAPI、winmm 播放、ShellExecuteW）/ tauri-plugin-log
 - 授权：GPL-3.0
 
 ## 常用命令
 
-- 安装依赖：`pnpm install`（根目录，会同时装 Rust 依赖需本机有 Rust 工具链）
-- 开发运行：`pnpm tauri dev`（Vite 热更 + Rust 调试一起跑）
-- 仅前端开发：`pnpm dev`
-- 前端构建：`pnpm build`
-- 打包桌面应用：`pnpm tauri build`（产物在 `src-tauri/target/release/bundle/nsis/`）
-- 纯 Rust 编译检查：在 `src-tauri/` 下 `cargo check`
-- 纯 Rust 单测：在 `src-tauri/` 下 `cargo test --lib`（含 `--ignored` 的联网测试：Edge TTS 合成、音色列表、突发失败率、更新检查）
-- PowerShell 辅助脚本：`scripts/`（`ui.ps1` 启动、`ws-probe.ps1` 弹幕协议探测、`edge-tts-probe.ps1` Edge TTS 协议与延迟/音色探测、`gen-icon.ps1` 图标生成）
+- 安装依赖：`pnpm install`
+- 开发运行：`pnpm tauri dev`（Vite 热更 + Rust 调试一起跑；Rust 改动会自动重编译重启）
+- 仅前端：`pnpm dev`；前端构建：`pnpm build`
+- 打包：`pnpm tauri build`（产物在 `src-tauri/target/release/bundle/nsis/`）
+- 纯 Rust：在 `src-tauri/` 下 `cargo check` / `cargo test --lib`（`-- --ignored` 是 4 个联网测试：Edge TTS 合成、音色列表、突发失败率、更新检查）
+- **签名 JS 不在仓库里**（第三方产物，见 `probe/README.md`）：新克隆的仓库先跑 `pwsh -File scripts/copy-sign-js.ps1`
+- 探针（都在 `probe/node/`）：`ws-probe.cjs`（协议）、`walk-rooms.cjs`（沿 `similar_rooms` 找正在直播的房间，抓样本用）
   - 含中文的 `.ps1` 必须用 `pwsh` 跑（Windows PowerShell 5.1 会按 GBK 解码无 BOM 的 UTF-8 文件，中文被拆坏后连引号都会解析出错）
 
 ## 代码约定
 
-- 目录结构：
-  - `src/` 前端：
-    - `views/` 页面（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、AboutView 关于，后三者均为页内标签式）
-    - `components/` 复用组件（`LoginDialog.vue` 登录二维码弹窗、`DanmakuFilterPanel.vue` 弹幕筛选表单（显示/朗读共用）、`StatusDashboard.vue` 运行状态仪表盘、`SettingRow.vue` 设置行、`OverlayWindowPanel.vue` 弹幕窗标签页）
-    - `composables/` 逻辑（`useLogin` 登录态、`useRoomConnection` 连接与最近房间、`useTtsConfig` 朗读配置与音色列表与校验、`useSaveTip` 设置页提示、`useUpdate` 更新检查结果）
-    - `overlay/OverlayApp.vue` + `overlay/DanmakuRow.vue` 悬浮层入口与单行渲染、`overlay/GiftRow.vue` 礼物行、`overlay/MetaBadges.vue` 两区共用的身份徽章列、`overlay/row-style.ts` 共用的描边计算、`sender/SenderApp.vue` 发送弹幕框入口
-    - `styles/settings.css` 全局设置页样式（约束见「注意事项」）、`types/ipc.ts` IPC 类型定义、`overlay.ts` / `sender.ts` 独立入口（对应 `overlay.html` / `sender.html`）
-  - `src-tauri/src/` Rust 核心：
-    - `lib.rs` 组装（状态托管、窗口创建、托盘、命令注册）、`state.rs` 内存状态、`commands.rs` IPC 命令、`connection.rs` 连接与断线重连、`window.rs` 窗口辅助与发送框吸附
-    - `bilibili/`：`protocol.rs` 协议包、`parser.rs` 解压/解析、`api.rs` HTTP 接口（房间解析、弹幕配置、主播名）、`ws.rs` WebSocket 会话、`wbi.rs` 签名、`login.rs` 扫码登录、`send.rs` 发送弹幕、`event.rs` 事件
-    - `tts/`：`mod.rs` 队列状态与入口钩子（`on_danmaku` / `on_backing`）、`text.rs` 筛选/清洗/组装文案（弹幕与打赏各一个组装函数）、`gift.rs` 礼物朗读的连击聚合与静默窗口、`worker.rs` 合成与播放流水线、`player.rs` winmm MCI 播放、`edge.rs` Edge TTS 协议、`edge/voices.rs` 音色表、`edge/ssml.rs` SSML 构造、`edge/util.rs` 时间与编码工具
-    - `config.rs` 配置读写与全局互斥、`config/types.rs` 结构体与默认值、`config/crypto.rs` DPAPI 加解密
-    - `gift.rs` 礼物列表：金额门槛与连击合并（唯一判定处，前端只负责按 id 覆盖与条数上限）
-    - `update.rs` 版本更新提醒：请求 GitHub Releases 比对版本（只提醒，不下载安装）、ShellExecuteW 打开下载页
-- 多窗口：根目录 `index.html`（主窗口）+ `overlay.html`（透明悬浮窗）+ `sender.html`（发送弹幕框），Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`
-- IPC 双向类型约定：Rust command 与 `src/types/ipc.ts` 保持一致，改动协议时两端同步
-- 注释、commit 一律简体中文；PRD（`prd.md`）已停止维护（见下）
-- 功能状态与规划以 `docs/技术说明.md` 表格为准（未做项：礼物图标、滚动弹幕、顶弹、用户屏蔽、Windows 系统 TTS、全局快捷键、开机自启、自动更新）；`README.md` 只写面向用户的产品介绍，技术细节一律放 `docs/技术说明.md`；`prd.md` 仅作历史设计参考，新需求不要再往上写
+### 目录
+
+- `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（发送框，禁用态）、`styles/settings.css`、`types/ipc.ts`
+- `src-tauri/src/`：`lib.rs`（组装）、`state.rs`、`commands.rs`、`connection.rs`（会话循环 + 重连）、`window.rs`（窗口与发送框吸附）、`gift.rs`（礼物列表：门槛 + 合并）、`welcome.rs`（欢迎信息：去重限速）、`tts/`（队列 `mod.rs`、文案 `text.rs`、礼物聚合 `gift.rs`、流水线 `worker.rs`、播放 `player.rs`、协议 `edge.rs`）、`config/`（读写 + 结构体 + DPAPI）、`update.rs`
+- `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（扫码登录）、`event.rs`（事件模型）
+- 多窗口：`index.html`（主窗）+ `overlay.html` + `sender.html` + `sign.html`（隐藏签名页），Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
+
+### 硬约定
+
+- 注释与 commit 一律简体中文
+- **布局契约（改一处必须同步三处）**：`MetaBadges.vue` 的 `.level-slot`（徽章列宽 5.6em + 右间距 0.7em）→ `OverlayApp.vue` 的 `--level-indent`（6.3em）→ `window.rs` 的 `LEVEL_INDENT_EM`（6.3）。发送框的左缩进用的是同一个数，不同步就会吸附错位。列宽是**量出来的**（最长「等级 + 灯牌」徽章组合 5.28em），要改就重新量
+- `MetaBadges.vue`、`row-style.ts` 是弹幕行与礼物行**故意共用**的（两区正文列要对齐），别复制一份改单侧
+- 弹幕窗性能敏感（120 条上限、透明层重绘）：入场动画只动 `transform` / `opacity`，**不要**给行加 `will-change`，也不要逐帧改 height / margin
+- 日志一律 `log::info!/warn!/error!`，**禁止 `println!` / `eprintln!`**（release 是 `windows_subsystem = "windows"`，stderr 直接丢）；日志里不得出现完整 Cookie
+- IPC 双向类型：Rust command ↔ `src/types/ipc.ts` 必须同步；**Tauri 命令名 = Rust 函数名**（改函数名记得同步前端的 `invoke('...')`）
+- 登录 Cookie 在 `config.rs` 的唯一写盘边界 `save_config_unlocked` 统一 DPAPI 加密（`dpapi:` 前缀 + hex）；新增敏感字段必须走同类加密，内存态保持明文
+- `config.rs` 读写持有全局互斥（`lock_cfg()` + `*_unlocked` 模式）：新增保存函数沿用这个模式，别在持锁时调用加锁的公共入口
+- `src/styles/settings.css` 是全局样式（无 scoped），类名是所有页面的共用契约，加规则前先确认不撞车
+- 删除功能时把孤儿代码一起删掉（本项目 `cargo check` 保持 **0 警告**，dead-code 清零是验收项）
+
+## 协议层注意事项（每条都是踩过的坑）
+
+1. **WS 握手必须带 `ttwid`**：用登录 cookie 整串替换 → `HTTP 200 + named cookie not present`。`resolver::merge_cookie` 负责合并
+2. **签名只认 13 个参数的原值**：顺序在 `sign::SIGN_PARAM_ORDER`，不可重排；URL 上其它参数（`internal_ext`）必须转义但不能参与签名。单测里有一条「与 node 实跑值一致」的断言（md5 = `5af9eb2bbced94bfd670f58fd47aced2`），改了参数它会先炸
+3. **签名失败不重试**（`WsError::retryable() == false`）：签名失败是环境问题，退避重试只会把同一次失败再跑一遍。握手被拒 / 读写失败才退避重连（`reconnect_delay`：1/2/4/…/64s，10 次上限）
+4. **`eval` 拿不到 JS 的返回值**：签名走「Rust `eval` 触发 → 页面 `invoke('douyin_sign_reply', {id, bogus})` → oneshot 按 id 路由」。页面没就绪时回 `NOT_READY`，Rust 内部重试 10×200ms（别改成直接报错）
+5. 隐藏窗口（`visible(false)`）里 WebView2 **照跑 JS**（本机已验证：启动日志 `[sign] WebView2 签名自检通过：X-Bogus=…`）
+6. 解不开的帧**只丢帧不重连**（抖音会夹带格式异常的帧，重连代价是多跑一轮签名）
+7. `proto::inflate` 只看偏移 0 的 gzip 魔数（探针是扫全串）。真机若出现「帧解不出 Response」而单测全绿，先怀疑这里
+8. **登录窗口不能窄**：抖音页面是响应式的，窄到 ~600px 以下顶部栏折叠、「登录」入口直接不渲染（真机踩过：520 宽的窗口里根本找不到登录按钮）。现在是 1180×820 / 最小 1000×680
+9. 退出登录要连 WebView2 的 cookie 库一起清（`clear_all_browsing_data`），否则「退出」后一点登录就秒过
+
+## 身份徽章（等级 / 灯牌）的字段口径
+
+| 展示 | 字段 | 备注 |
+|---|---|---|
+| 用户等级（荣誉等级） | `User.f23 = PayGrade` → `f6`(varint) | 读不到就从图标 URL 抠 `new_user_grade_level_v1_N.png`；`User.f21` 徽章列表里也挂着同一张图 |
+| 灯牌等级 | `User.f24 = FansClub{f1 = FansClubData{f2 = level}}` | 没加团的观众 f24 是十字节空壳；**灯牌没有名字**（`clubName` 实测为空） |
+
+- **不要用 `User.f6`**：它绝大多数用户根本不带，带的人值是 1，**不是等级**。真机曾因此显示错（显示的其实是粉丝团等级 / 或凭空一个 LV1）
+- 徽章列宽必须够：`.level-slot` 是 `justify-content: flex-end` + `overflow: hidden`，内容超宽从**左边**裁（真机出过「LV20 显示成 V20」）
+
+## 朗读（Edge TTS）
+
+- 协议集中在 `tts/edge.rs`（音色表 `edge/voices.rs`、SSML `edge/ssml.rs`）：改协议用 `scripts/edge-tts-probe.ps1` 验证
+- 播放走 winmm MCI + 固定临时文件；依赖队列串行（同一时刻只有一个 MCI 句柄）；`max_len` 只约束弹幕正文
+- 停播有两条**互不相同**的路径，别合并：①`epoch` 递增 = 作废还没开播的在途音频；②`player::play_mp3` 的 `stop_now` 闭包 = 每 100ms 查总开关。`force = true`（试听 / 礼物朗读）两道都免疫
+- **Edge TTS 不接受连接复用**（同一连接发第二轮必被 RST），`synthesize` 每条新建连接，别改成连接池
+- 建连走自研 `dial_tcp`（自己解析 DNS、IPv4 优先）：别换回 `tokio_tungstenite::connect_async`，国内 IPv6 直连微软偶发被 RST，现象是弹幕正常而朗读整段全挂
+- 合成失败必须走熔断退避（连续 2 次 → 清积压 + 1/2/4…封顶 60s），排查用 `cargo test --lib -- --ignored edge_burst_live --nocapture`
+- 单条合成有两层超时（`worker.rs` 的 `SYNTH_TIMEOUT` 与 `edge.rs` 的 `RECV_TIMEOUT`），别只留一个
+- 礼物朗读自己按「用户 + 礼物」聚合一遍（不复用 `gift.rs` 的分组表），静默满一个连击窗口才念一次，插队用 `push_front`；队列丢弃只丢**弹幕**（`force` 项保留）
+- 欢迎信息**不朗读**（抖音没有舰队档位，念出来没有信息量）
+
+## 礼物 / 欢迎信息
+
+- `gift.rs` 是礼物金额门槛与连击合并的**唯一判定处**（前端只按 id 覆盖与条数上限）；数量与金额**取服务端累计值**，不累加
+- 欢迎信息在 `welcome.rs`：同人同类 60 秒去重 + **所有形态共用一个大池**每 30 秒最多 1 条；去重限速**与开关无关地先跑**（开关只决定播不播）
+- 礼物朗读门槛与礼物区门槛**各自独立**（`GiftTtsConfig` 可更低甚至只朗读不显示）
 
 ## 版本号与发布
 
-- 禁止在 `main` 上直接开发：功能 / 修复 / 重构一律先切分支（沿用 `feature/` / `fix/` / `refactor/` 前缀，见 `git branch -a`），完成后开 PR、squash 合并回 `main`；只有版本号提升、README / 文档这类发布收尾可直接提交 `main`
-- 版本号要同步改 3 处：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`；`src-tauri/Cargo.lock` 由 `cargo check` / 构建自动更新
+- 禁止在 `main` 上直接开发：功能 / 修复 / 重构先切分支（`feature/` / `fix/` / `refactor/`），完成后开 PR、squash 合并回 `main`；**只有版本号提升、README / 文档这类收尾可直接提交 `main`**
+- 版本号同步 3 处：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`（`Cargo.lock` 由构建自动更新）
 - 流程：改版本 → commit（`🚀 应用版本号升至 X.Y.Z（…）`）→ 推 `main` → `pnpm tauri build` → `gh release create`
-- 安装包路径：`src-tauri/target/release/bundle/nsis/bili-danmu_<版本>_x64-setup.exe`
-- 打包前确认应用没在运行，否则 NSIS 写 exe 会失败
-- `gh release create` 的 tag 只建在远端，本地要 `git fetch --tags` 才看得到
-- 仓库历史一律 squash 合并（main 上每个 PR 一个带 `(#N)` 的 commit）：`gh pr merge --squash` 时**别传 `--subject`**，否则 GitHub 不会自动追加 `(#N)`，破坏标题格式
+- 打包前确认应用没在运行（NSIS 写 exe 会失败）；`gh release create` 的 tag 只建在远端，本地要 `git fetch --tags`
+- 历史一律 squash 合并（main 上每个 PR 一个带 `(#N)` 的 commit）：`gh pr merge --squash` **别传 `--subject`**，否则 GitHub 不会自动追加 `(#N)`
 
 ## 注意事项
 
-- 禁止提交：`node_modules/`、`dist/`、`src-tauri/target/`、`src-tauri/gen/schemas/`、`Task/`、`dev.log`、根目录截图（`.gitignore` 已配）
-- 弹幕必须登录态：B 站 2025+ 不向游客推送 `DANMU_MSG`，游客级 token 只是登录路径失败时的兜底（能连上但收不到弹幕）。登录 Cookie 本地持久化；改动协议时用 `scripts/ws-probe.ps1` 验证
-- 弹幕窗口性能敏感（120 条上限、透明层重绘），前端改动注意不要引入高频重排；入场动画（`overlay.css` 的 `.row-enter`）只动 `transform` / `opacity`（合成层）且只在新节点挂载时播一次——**不要**给行加 `will-change`（120 行会常驻独立图层），也不要改成逐帧改 height / margin 的效果（每帧重排）
-- 登录 Cookie 在 `config.rs` 的 `save_config_unlocked`（唯一写盘边界）统一 **DPAPI 加密**（`dpapi:` 前缀 + hex）落盘，加解密在 `config/crypto.rs`，读取自动解密（旧版明文无前缀兼容）：任何新增的敏感字段必须走同类加密，勿明文落盘；内存态保持明文
-- `config.rs` 读写持有全局互斥（save_* 均为 load-modify-save）：新增保存函数须沿用 `lock_cfg()` + `*_unlocked` 模式，勿在持锁时调用加锁公共入口（std Mutex 不可重入）
-- 断线自动重连在 `connection.rs` `spawn_connection`（1/2/4/…/30s 退避、10 次上限）；改连接收尾逻辑时保留取消令牌身份检查（`finish_connection`），否则旧任务会误清新连接状态
-- 发送弹幕需登录态（`bili_jct` 做 CSRF 签名，游客无 bili_jct 会报错）；发送框窗口始终吸附 Overlay 下方（`window.rs` `sync_sender_docked`），**左端与面板背景左边缘同一条线**（6px padding + `--panel-inset` 5.15em，不再对齐正文列）、**宽度取面板宽度的 80%**、高度随弹幕字号缩放——改 Overlay 布局（容器 padding、`--role-indent` / `--panel-inset`）时须同步 `sender_layout_metrics` 里的这几个系数
-- 朗读与显示是**两套独立的 `DanmakuFilter`**（`danmaku_filter` / `tts.filter`）：显示筛选在前端 Overlay 做，朗读筛选在 Rust `tts::on_danmaku` 做，改任一侧别把两者耦合成一份配置
-- `src/styles/settings.css` 是**全局样式**（无 scoped），类名是主窗口所有页面的共用契约：往里加规则前先确认不和已有页面的类名撞车（`StatusDashboard` 的 `.tip` 就因此改名 `.dashboard-tip`）；页面独有的差异项（如 `.select` 的 min-width）留在各自组件的 scoped 样式里覆盖
-- `DisplayDanmaku`（弹幕事件 + `isRoomMedal` 派生标记）定义在 `types/ipc.ts`，Overlay 列表与 `DanmakuRow` 共用
-- Edge TTS 协议集中在 `tts/edge.rs`（音色表在 `edge/voices.rs`、SSML 在 `edge/ssml.rs`）：改协议用 `scripts/edge-tts-probe.ps1` 验证（`-DumpHeader` 看帧头、`-OutputFormat` 换格式），联网单测是 `cargo test --lib -- --ignored edge_synthesizes_mp3_live` / `voice_list_fetches_live`
-- `tts/text.rs` 的 `NAMED_CHARS`（`_`→下划线、`ω`→欧米伽等噪声字符表）是逐字实测得出的，加字符前先用探测脚本实测 Δ 字节数；实测数据在 `Task/findings.md`（该目录被 gitignore，仅本机可见）
-- TTS 播放走 winmm MCI + 固定临时文件 `%TEMP%\bili-danmu-tts.mp3`，依赖队列串行（同一时刻只有一个 MCI 句柄）；`max_len` 只约束弹幕正文，不含身份前缀与用户名
-- TTS 停播有两条互不相同的路径，别合并：①`epoch` 递增 = 作废**还没开播**的在途音频（积压时打断；正在念的那条念完，否则开了念用户名时只能听到半句名字）；②`worker.rs` 里 `player::play_mp3` 的 `stop_now` 闭包 = 每 100ms 查总开关，关掉朗读时立刻停。`force = true`（试听 / 礼物朗读）**两道拦截都免疫**：一旦入队就一定念完（礼物正在合成时弹幕到达不会把它作废）。不要改回「从其他线程直接调 MCI stop」：它会与 open/play 交错，且阻塞弹幕回调
-- 礼物朗读仍受合成串行约束：“插队”只改变**队列顺序**（`push_front`），当前这条合成/播放完才能轮到打赏，故插队后仍有最多「一条弹幕的合成 + 播放」延迟；想提前只能掐断正在念的音频，那会听到半句（见上一条）
-- 单条合成有两层超时：`tts/worker.rs` 的 `SYNTH_TIMEOUT`（调用方包住整条，含建连）与 `edge.rs` 的 `RECV_TIMEOUT`（收流阶段），别只留一个
-- Edge TTS **不接受连接复用**：同一条连接发第二轮 speech.config + ssml 必被 RST（10054，实测）。`synthesize` 每条新建连接，别改成连接池/长连接
-- Edge TTS 建连走 `edge.rs` 自研的 `dial_tcp`（自己解析 DNS、**IPv4 优先**、全部失败才回退 IPv6），别换回 `tokio_tungstenite::connect_async`：后者按 DNS 返回顺序连（Windows 上 IPv6 通常排前）且不会因链路劣化换地址族，国内 IPv6 直连微软偶发被 RST，现象是弹幕一路正常而朗读整段全挂（收流阶段 10054）。合成失败日志末尾带「对端 IP」就是为了区分是哪条路径出的问题
-- 合成失败必须走熔断退避（`tts/worker.rs`：连续 2 次 → 清空积压 + 1/2/4…封顶 60s）：失败是 ~0.1s 级响应、成功是 ~2s，若“失败立即重试下一条”，请求速率会瞬时飙升十倍，把服务端限流撞得更紧并自我维持（表现为持续 10054 + 20s 黑洞超时）。排查用 `cargo test --lib -- --ignored edge_burst_live --nocapture`
-- 日志一律走 `log::info!/warn!/error!`，**禁止新增 `eprintln!` / `println!`**：release 是 `windows_subsystem = "windows"`，stderr 直接丢失，排障时拿不到任何现场（`#[cfg(test)]` 里的探测打印除外）。插件配置（落盘目录 / 5MB 轮转 / 保留 7 份 / 本地时区 / dev 终端）只在 `lib.rs` 注册处一处，细节见 `docs/技术说明.md` 的「统一日志」；日志里不得出现 Cookie 凭据
+- 禁止提交：`node_modules/`、`dist/`、`src-tauri/target/`、`src-tauri/gen/schemas/`、`dev.log`、根目录截图
+- **第三方代码/产物不进仓库**（授权口径与本项目 GPL-3.0 不一致，`.gitignore` 已配）：
+  - `probe/sign/sign.js`、`probe/browser/sign_browser.js`、`public/douyin-sign.js` —— webmssdk 反混淆产物（字节跳动所有）
+  - `probe/reference/` —— 来自 saermart/DouyinLiveWebFetcher（**AGPL-3.0**）
+  - `probe/node/*.txt` —— 探针跑出来的日志与 **Cookie 导出**（含凭据，尤其别外传）
+- 配置与日志目录：`%APPDATA%\com.douyindanmu.app\config.json`、`%LOCALAPPDATA%\com.douyindanmu.app\logs\douyin-danmu.log`
+- 房间不在直播时（响应里 `status != 2`）WS 仍能连上但基本没消息：`connection.rs` 会打一条 warn，别把「连上了没弹幕」当 bug 查
+- 抖音的「用户等级」筛选开着会滤掉大部分弹幕（没消费过的观众没有等级）——这是设计使然，不是 bug

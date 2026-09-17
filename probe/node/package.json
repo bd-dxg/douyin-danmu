@@ -1,7 +1,7 @@
 {
   "name": "douyin-ws-probe",
-  "private": true,
   "version": "1.0.0",
+  "private": true,
   "type": "commonjs",
   "dependencies": {
     "jsdom": "^30.0.1",

@@ -135,10 +135,19 @@ onUnmounted(() => {
     <div class="card">
       <h3>致谢开源</h3>
       <ul class="thanks">
-        <li>B 站弹幕协议相关接口的公开分析与实现</li>
+        <li>
+          <a href="https://github.com/bddxg/bili-danmu" target="_blank" rel="noreferrer">bili-danmu</a>
+          （骨架与 UI 设计，本项目由它派生）
+        </li>
         <li>
           <a href="https://github.com/SoraYjy/DanmuFree" target="_blank" rel="noreferrer">DanmuFree</a>
-          （认证流程与 WBI 签名对齐的参考实现）
+          （抖音协议蓝本：房间解析 / 签名素材 / WS 帧结构）
+        </li>
+        <li>
+          <a href="https://github.com/saermart/DouyinLiveWebFetcher" target="_blank" rel="noreferrer">
+            DouyinLiveWebFetcher
+          </a>
+          （protobuf 字段号对照）
         </li>
       </ul>
     </div>
@@ -146,7 +155,7 @@ onUnmounted(() => {
     <div class="card support">
       <div class="support-text">
         <h3>支持项目</h3>
-        <p>这个项目的功能都是业余时间开发和维护的：跟进 B 站协议改动、修 bug、加新功能。</p>
+        <p>这个项目的功能都是业余时间开发和维护的：跟进抖音协议改动、修 bug、加新功能。</p>
         <p>如果它帮你把直播弹幕看得更顺手，可以扫码支持一下，每份心意都是它继续更新的动力。</p>
         <p class="wx">微信扫码</p>
       </div>

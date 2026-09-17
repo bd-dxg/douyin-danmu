@@ -107,7 +107,7 @@ impl Default for DanmakuFilter {
 
 /// TTS 弹幕朗读配置（M5）
 ///
-/// 朗读筛选用独立的 `DanmakuFilter` 实例：显示全开、只朗读舰长这类组合才成立。
+/// 朗读筛选用独立的 `DanmakuFilter` 实例：「显示全开、只朗读高等级」这类组合才成立。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TtsConfig {
@@ -139,7 +139,7 @@ impl Default for TtsConfig {
             rate_pct: 0,
             volume_pct: 0,
             read_username: false,
-            // 15 字 ≈ 3.4s 音频；B 站弹幕上限 30–40 字（≈ 7–9s），全念完在高频房间会明显积压
+            // 15 字 ≈ 3.4s 音频；长弹幕全念完在高频房间会明显积压
             max_len: 15,
             max_queue: 5,
             interrupt_on_backlog: true,
@@ -200,7 +200,7 @@ impl Default for GiftTtsConfig {
     }
 }
 
-/// 欢迎信息配置（进房 / 关注 / 分享 / 点赞 / 舰长进场）
+/// 欢迎信息配置（进房 / 关注 / 点赞）
 ///
 /// 默认关：这类事件的量级比弹幕大（实测进房 : 弹幕在 1.5 : 1 ~ 10 : 1），
 /// 且在热度房里被限速后只剩 2% 左右的采样——它本来就是「冷房间看热闹」用的，

@@ -343,13 +343,13 @@ mod tests {
     fn 高频弹幕不会把插队的礼物顶掉() {
         // 队列上限 2：插队的是上舰（只来一次），后面弹幕连续涌入
         let state = TtsState::new(TtsConfig::default());
-        state.push_front("感谢木茂上舰舰长".into(), 2);
+        state.push_front("感谢老板A送的5个辣条".into(), 2);
         for i in 0..5 {
             state.push(format!("弹幕{i}"), 2, false);
         }
         let queue = state.queue.lock().unwrap();
         assert_eq!(queue.len(), 2);
-        assert_eq!(queue.front().unwrap().text, "感谢木茂上舰舰长");
+        assert_eq!(queue.front().unwrap().text, "感谢老板A送的5个辣条");
         assert_eq!(queue.back().unwrap().text, "弹幕4", "丢的应是最旧的弹幕");
     }
 
