@@ -1,0 +1,256 @@
+// Rust ↔ Vue IPC 共享类型定义
+// 与 src-tauri 中 emit / invoke 的 payload 保持同步
+
+/** 连接状态事件（Rust → Vue，事件名 room-status） */
+export type RoomStatusEvent =
+  | { state: 'disconnected' }
+  | { state: 'connecting'; webRid: string }
+  /** webRid = 直播间短号（live.douyin.com/ 后面那串）；19 位真实 room_id 只在 Rust 内部用 */
+  | { state: 'connected'; webRid: string }
+  | { state: 'error'; message: string }
+
+/** 弹幕事件（Rust → Vue，事件名 danmaku） */
+export interface DanmakuEvent {
+  id: string
+  username: string
+  content: string
+  /** Unix 秒 */
+  timestamp: number
+  /** 抖音用户等级（服务端不一定每条都带） */
+  level?: number
+  /** 粉丝团（灯牌）等级：只有已加入本直播间粉丝团的观众才有 */
+  fansclub_level?: number
+}
+
+/** Overlay 弹幕行数据：弹幕事件 + 展示所需的派生标记 */
+export interface DisplayDanmaku extends DanmakuEvent {
+  /** 欢迎信息行：不显示用户名，正文用弱化色（与弹幕区分） */
+  isWelcome?: boolean
+}
+
+/**
+ * 礼物列表的一行（Rust → Vue，事件名 gift）
+ *
+ * 同一连击分组的更新会复用同一个 id 重复下发，前端按 id 覆盖而不新增行。
+ */
+export interface BackingEvent {
+  id: string
+  /** 抖音目前只有礼物一种打赏形态 */
+  kind: 'gift'
+  uid: number
+  username: string
+  /** 礼物名 */
+  gift_name: string
+  gift_id: number
+  /** 连击**累计**数量（服务端给的总数，不是本次增量） */
+  num: number
+  /** 人民币价值（分），1 元 = 100 分 */
+  amount_fen: number
+  /** Unix 秒 */
+  timestamp: number
+  /** 抖音用户等级 */
+  level?: number
+}
+
+/** 礼物列表配置（Rust ↔ Vue，事件名 gift-config） */
+export interface GiftConfig {
+  /** 是否在弹幕窗展示礼物区 */
+  enabled: boolean
+  /** 打赏金额门槛（元）：0 = 全部付费打赏 */
+  min_amount_yuan: number
+  /** 礼物区最多同时显示的条数 */
+  max_rows: number
+  /** 连击合并窗口（秒） */
+  combo_window_secs: number
+}
+
+/** 礼物列表默认配置（与 config/types.rs 的 GiftConfig::default 保持一致） */
+export const DEFAULT_GIFT_CONFIG: GiftConfig = {
+  enabled: true,
+  min_amount_yuan: 0,
+  max_rows: 5,
+  combo_window_secs: 5,
+}
+
+/** 礼物朗读配置（Rust ↔ Vue） */
+export interface GiftTtsConfig {
+  /** 是否朗读打赏（独立于弹幕朗读开关与礼物区显示开关） */
+  enabled: boolean
+  /** 朗读金额门槛（元）：0 = 全部付费打赏 */
+  min_amount_yuan: number
+}
+
+/** 礼物朗读默认配置（与 config/types.rs 的 GiftTtsConfig::default 保持一致） */
+export const DEFAULT_GIFT_TTS_CONFIG: GiftTtsConfig = {
+  enabled: false,
+  min_amount_yuan: 0,
+}
+
+/**
+ * 欢迎消息（Rust → Vue，事件名 welcome）
+ *
+ * 已在 Rust 侧做完去重（同人同类 60 秒）与限速（每 30 秒最多 1 条），
+ * 前端收到即可直接渲染。
+ */
+export interface WelcomeEvent {
+  id: string
+  kind: 'enter' | 'follow' | 'like'
+  uid: number
+  username: string
+  /** Unix 秒 */
+  timestamp: number
+}
+
+/** 欢迎信息配置（Rust ↔ Vue，事件名 welcome-config） */
+export interface WelcomeConfig {
+  /** 是否在弹幕窗显示欢迎信息（默认关） */
+  enabled: boolean
+}
+
+/** 欢迎信息默认配置（与 config/types.rs 的 WelcomeConfig::default 保持一致） */
+export const DEFAULT_WELCOME_CONFIG: WelcomeConfig = {
+  enabled: false,
+}
+
+/** Overlay 弹幕样式（Rust ↔ Vue） */
+export interface OverlayStyle {
+  font_size: number
+  font_family: string
+  /** 是否显示抖音等级徽章 */
+  show_level: boolean
+  /** 是否显示粉丝团（灯牌）徽章 */
+  show_fansclub: boolean
+  username_color: string
+  content_color: string
+  bold: boolean
+  outline: boolean
+  outline_color: string
+  outline_width: number
+  /** 弹幕行间距 px（0=不额外加，仅行高） */
+  row_gap: number
+  /** 弹幕区 / 礼物区的背景不透明度（0-100，0 = 完全透明，100 = 纯黑） */
+  bg_opacity: number
+}
+
+/** Overlay 弹幕样式默认值（与 config/types.rs 的 OverlayStyle::default 保持一致） */
+export const DEFAULT_OVERLAY_STYLE: OverlayStyle = {
+  font_size: 17,
+  font_family: 'Microsoft YaHei UI',
+  show_level: true,
+  show_fansclub: true,
+  username_color: '#85DEF1',
+  content_color: '#FFFFFF',
+  bold: true,
+  outline: true,
+  outline_color: '#000000',
+  outline_width: 2,
+  row_gap: 0,
+  bg_opacity: 35,
+}
+
+/** connect_room 返回值 */
+export type ConnectResult = { ok: true } | { ok: false; message: string }
+
+/** 最近连接过的直播间（Rust 持久化，主界面输入框下方面包屑） */
+export interface RecentRoom {
+  /** 直播间短号 */
+  room_id: string
+  /** 主播昵称（抖音拿不到免签的主播名接口，恒为 null，前端回退显示房间号） */
+  uname?: string | null
+}
+
+/** 弹幕过滤配置（Rust ↔ Vue，事件名 danmaku-filter） */
+export interface DanmakuFilter {
+  /** 只显示抖音等级 ≥ level_min 的弹幕 */
+  enable_level: boolean
+  /** 抖音等级门槛 */
+  level_min: number
+  /** 屏蔽含敏感词的弹幕（整条丢弃） */
+  enable_sensitive: boolean
+  /** 敏感词表（内容含任一即丢弃） */
+  sensitive_words: string[]
+}
+
+/** 弹幕过滤默认值（全关 = 不过滤） */
+export const DEFAULT_DANMAKU_FILTER: DanmakuFilter = {
+  enable_level: false,
+  level_min: 0,
+  enable_sensitive: false,
+  sensitive_words: [],
+}
+
+/** Edge TTS 音色（tts_list_voices 返回） */
+export interface TtsVoice {
+  id: string
+  label: string
+}
+
+/** TTS 弹幕朗读配置（Rust ↔ Vue） */
+export interface TtsConfig {
+  /** 总开关 */
+  enabled: boolean
+  /** Edge TTS 音色名 */
+  voice: string
+  /** 语速百分比偏移（-50 = 半速，+50 = 1.5 倍速） */
+  rate_pct: number
+  /** 音量百分比偏移 */
+  volume_pct: number
+  /** 是否在正文前念用户名 */
+  read_username: boolean
+  /** 弹幕正文最大朗读字数（不含用户名，0 = 不限制） */
+  max_len: number
+  /** 待朗读队列上限（超出丢弃最旧的） */
+  max_queue: number
+  /** 积压时丢弃待播旧弹幕（当前这条念完） */
+  interrupt_on_backlog: boolean
+  /** 朗读筛选条件（与弹幕显示筛选相互独立） */
+  filter: DanmakuFilter
+}
+
+/** 仪表盘状态快照（get_dashboard_status 返回，主窗口直播间页底部只读展示） */
+export interface DashboardStatus {
+  overlay: {
+    /** 弹幕窗是否可见 */
+    visible: boolean
+    /** 鼠标穿透是否开启 */
+    clickthrough: boolean
+    /** 是否始终置顶 */
+    always_on_top: boolean
+  }
+  tts: {
+    enabled: boolean
+    /** 朗读筛选条件（与显示筛选相互独立） */
+    filter: DanmakuFilter
+  }
+  /** 最近 10 秒接收到的弹幕条数 */
+  danmaku_rate: number
+}
+
+/** TTS 默认配置 */
+export const DEFAULT_TTS_CONFIG: TtsConfig = {
+  enabled: false,
+  voice: 'zh-CN-XiaoxiaoNeural',
+  rate_pct: 0,
+  volume_pct: 0,
+  read_username: false,
+  // 15 字 ≈ 3.4s 音频；全念完在高频房间会明显积压
+  max_len: 15,
+  max_queue: 5,
+  interrupt_on_backlog: true,
+  filter: DEFAULT_DANMAKU_FILTER,
+}
+
+/** 登录态（get_login_info 返回） */
+export interface LoginInfo {
+  loggedIn: boolean
+}
+
+/** 更新检查结果（Rust → Vue，命令 check_update） */
+export interface UpdateInfo {
+  /** GitHub Releases 最新版本（tag 去掉 v 前缀） */
+  latest: string
+  /** 最新版本是否比本机新 */
+  has_update: boolean
+  /** 新版本页面地址 */
+  url: string
+}

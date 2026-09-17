@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>douyin-danmu sign</title>
+  </head>
+  <body>
+    <!-- 隐藏窗口（douyin/signer.rs 创建，登录时会被导航到抖音登录页）。
+         顺序不能动：douyin-sign.js 先定义 window.getSign，sign.ts 再把它包成一次请求/一次回调。
+         douyin-sign.js 由 scripts/copy-sign-js.ps1 从 probe/browser/sign_browser.js 拷来。 -->
+    <script src="/douyin-sign.js"></script>
+    <script type="module" src="/src/sign.ts"></script>
+  </body>
+</html>

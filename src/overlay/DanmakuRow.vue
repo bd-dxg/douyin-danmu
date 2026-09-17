@@ -1,0 +1,87 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+
+import MetaBadges from './MetaBadges.vue'
+import { rowShadow, shiftHue, WELCOME_HUE_SHIFT } from './row-style'
+
+import type { DisplayDanmaku, OverlayStyle } from '../types/ipc'
+
+// 单条弹幕行：徽章区（MetaBadges，与礼物行共用）+ 正文区。
+// 行内样式全部来自 OverlayStyle（由 OverlayApp 统一下发），字号/行距等继承
+// 弹幕窗根节点，故这里只处理描边与文字颜色。描边计算与礼物行共用 row-style.ts。
+const props = defineProps<{
+  d: DisplayDanmaku
+  overlayStyle: OverlayStyle
+}>()
+
+/**
+ * 正文颜色：欢迎信息行跟随「用户名颜色」，其余跟随正文颜色
+ *
+ * 欢迎行没有用户名，就拿「用户名颜色」当它的主题色：主播改这一项时，弹幕的用户名、
+ * 礼物行的用户名、欢迎行会一起变，不用为它单独配一个颜色。
+ * 与弹幕正文的区分靠 `▸` 前缀 + 色相，不靠降低亮度（弹幕窗背景多是游戏画面，降亮度会糊）。
+ */
+/**
+ * 正文颜色：欢迎信息行从「用户名颜色」偏移色相派生，其余跟随正文颜色
+ *
+ * 为什么不直接沿用「用户名颜色」：那样和弹幕用户名完全同色，丢了区分度。
+ * 为什么不降亮度：弹幕窗背景多是游戏画面，降亮度会直接糊。只动色相才兼顾两者。
+ */
+const contentColor = computed(() =>
+  props.d.isWelcome ? shiftHue(props.overlayStyle.username_color, WELCOME_HUE_SHIFT) : props.overlayStyle.content_color,
+)
+</script>
+
+<template>
+  <div class="danmu-row row-enter" :style="{ textShadow: rowShadow(overlayStyle) }" data-tauri-drag-region>
+    <MetaBadges :level="d.level" :fans-club-level="d.fansclub_level" :overlay-style="overlayStyle" />
+    <!-- 正文区：用户名 + 内容，超宽在此区内折行（续行与首行正文同列） -->
+    <span class="msg">
+      <template v-if="d.username">
+        <span
+          class="user"
+          :style="{
+            color: overlayStyle.username_color,
+            fontWeight: overlayStyle.bold ? 800 : 600,
+          }">
+          {{ d.username + '：' }}
+        </span>
+      </template>
+      <span
+        class="content"
+        :style="{
+          color: contentColor,
+          fontWeight: overlayStyle.bold ? 700 : 400,
+        }">
+        {{ d.content }}
+      </span>
+    </span>
+  </div>
+</template>
+
+<style scoped>
+/* 弹幕行：徽章区(meta) + 正文区(msg) 两栏；正文超宽在 msg 内折行，续行与首行同列 */
+.danmu-row {
+  display: flex;
+  align-items: flex-start;
+  font-size: inherit;
+  line-height: 1.65;
+  color: #fff;
+}
+
+/* 正文区：占剩余宽度，长文本在此折行 */
+.msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.user {
+  font-weight: 600;
+}
+
+.content {
+  /* 颜色可能被 JS 覆盖，继承行高 */
+  font-weight: 400;
+}
+</style>

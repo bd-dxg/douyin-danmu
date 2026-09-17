@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>douyin sign poc</title>
+  </head>
+  <body>
+    <h1>douyin X-Bogus poc</h1>
+    <pre id="out">pending</pre>
+    <!-- sign_browser.js = DanmuFree 的 sign.js 去掉前 7 行 jsdom 补环境，直接用浏览器真实的 window/document/navigator -->
+    <script src="./sign_browser.js"></script>
+    <script>
+      ;(function () {
+        var out = document.getElementById('out')
+        try {
+          window.__pocResult = window.getSign({ 'X-MS-STUB': 'c1180e560e13ce8c5567b4002dbac516' })
+          out.textContent = JSON.stringify(window.__pocResult)
+        } catch (e) {
+          window.__pocError = String((e && e.stack) || e)
+          out.textContent = 'ERROR: ' + window.__pocError
+        }
+      })()
+    </script>
+  </body>
+</html>

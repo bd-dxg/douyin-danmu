@@ -1,0 +1,247 @@
+//! 配置结构体与默认值（纯数据定义，不含任何读写逻辑）
+//!
+//! 字段随里程碑扩展：M2 登录 Cookie；M4 Overlay 弹幕样式；M5 朗读；M6 完整应用配置。
+
+use serde::{Deserialize, Serialize};
+
+/// 抖音登录态（游客为空）
+///
+/// 抖音没有像 B 站那样好用的「uid + 昵称」接口，登录后真正有用的只有 Cookie：
+/// `ttwid` 是 WS 握手必需（`resolver` 每次会话前都会取一份新鲜的），
+/// `sessionid` 决定有没有礼物消息。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AuthInfo {
+    /// Cookie 串（如 "ttwid=..; sessionid=.."）——内存保持明文供 HTTP / WS 使用；
+    /// 落盘时经 DPAPI 加密（见 crypto::encrypt_cookie），从磁盘读取后自动解密
+    pub cookies: String,
+}
+
+/// Overlay 弹幕样式（M4）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OverlayStyle {
+    /// 弹幕字号（px）
+    pub font_size: f64,
+    /// 字体族
+    pub font_family: String,
+    /// 是否显示抖音等级徽章
+    pub show_level: bool,
+    /// 是否显示粉丝团（灯牌）徽章
+    pub show_fansclub: bool,
+    /// 用户名颜色（#RRGGBB）
+    pub username_color: String,
+    /// 弹幕内容颜色（#RRGGBB）
+    pub content_color: String,
+    /// 文字加粗
+    pub bold: bool,
+    /// 是否文字描边
+    pub outline: bool,
+    /// 描边颜色（#RRGGBB）
+    pub outline_color: String,
+    /// 描边宽度（px 近似值）
+    pub outline_width: f64,
+    /// 弹幕行间距（px，0=不额外加，仅行高）
+    pub row_gap: f64,
+    /// 弹幕区 / 礼物区的背景不透明度（0-100，0 = 完全透明，100 = 纯黑）
+    pub bg_opacity: f64,
+}
+
+impl Default for OverlayStyle {
+    fn default() -> Self {
+        Self {
+            font_size: 17.0,
+            font_family: "Microsoft YaHei UI".into(),
+            show_level: true,
+            show_fansclub: true,
+            username_color: "#85DEF1".into(),
+            content_color: "#FFFFFF".into(),
+            bold: true,
+            outline: true,
+            outline_color: "#000000".into(),
+            outline_width: 2.0,
+            row_gap: 0.0,
+            bg_opacity: 35.0,
+        }
+    }
+}
+
+/// Overlay 窗口位置大小（M3.5，逻辑坐标）
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct WindowBounds {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// 弹幕过滤配置
+///
+/// 身份规则间为「或」关系：任一开启的规则命中即显示（全部关闭 = 不过滤）；
+/// 敏感词屏蔽独立叠加：开关开启且命中词表时整条丢弃，白名单规则不豁免。
+///
+/// v1 只有「抖音等级」一条身份规则：粉丝团（灯牌）等级埋在 `User.BadgeImageList`
+/// 的嵌套 `content` 里、字段号未实测，拿不到数据就不给开关（见 `Task/task_plan.md` 关键问题 4）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DanmakuFilter {
+    /// 只显示抖音等级 ≥ level_min 的弹幕
+    pub enable_level: bool,
+    /// 抖音等级门槛（配合 enable_level）
+    pub level_min: u32,
+    /// 屏蔽命中敏感词的弹幕（整条丢弃）
+    pub enable_sensitive: bool,
+    /// 敏感词表（弹幕内容含任一即丢弃）
+    pub sensitive_words: Vec<String>,
+}
+
+impl Default for DanmakuFilter {
+    fn default() -> Self {
+        Self {
+            enable_level: false,
+            level_min: 0,
+            enable_sensitive: false,
+            sensitive_words: Vec::new(),
+        }
+    }
+}
+
+/// TTS 弹幕朗读配置（M5）
+///
+/// 朗读筛选用独立的 `DanmakuFilter` 实例：显示全开、只朗读舰长这类组合才成立。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TtsConfig {
+    /// 总开关
+    pub enabled: bool,
+    /// Edge TTS 音色名（如 zh-CN-XiaoxiaoNeural）
+    pub voice: String,
+    /// 语速百分比偏移（-50 = 半速，+50 = 1.5 倍速）
+    pub rate_pct: i32,
+    /// 音量百分比偏移
+    pub volume_pct: i32,
+    /// 是否在正文前念用户名
+    pub read_username: bool,
+    /// 弹幕正文最大朗读字数（不含身份前缀与用户名；超出截断，0 = 不限制）
+    pub max_len: u32,
+    /// 待朗读队列上限（超出丢弃最旧的）
+    pub max_queue: u32,
+    /// 积压时丢弃待播的旧弹幕（作废还没开播的在途音频，正在念的那条念完）
+    pub interrupt_on_backlog: bool,
+    /// 朗读筛选条件（与弹幕显示筛选相互独立）
+    pub filter: DanmakuFilter,
+}
+
+impl Default for TtsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            voice: "zh-CN-XiaoxiaoNeural".into(),
+            rate_pct: 0,
+            volume_pct: 0,
+            read_username: false,
+            // 15 字 ≈ 3.4s 音频；B 站弹幕上限 30–40 字（≈ 7–9s），全念完在高频房间会明显积压
+            max_len: 15,
+            max_queue: 5,
+            interrupt_on_backlog: true,
+            filter: DanmakuFilter::default(),
+        }
+    }
+}
+
+/// 礼物列表配置
+///
+/// 门槛以人民币元配置（1 钻石 = 0.1 元，见 `douyin::parser::DIAMOND_FEN`）。
+/// 抖音服务端直接下发**连击累计数**，故不靠本地累加判定门槛。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GiftConfig {
+    /// 是否在弹幕窗展示礼物区
+    pub enabled: bool,
+    /// 打赏金额门槛（元）：低于此价值的打赏不进礼物列表（0 = 全部付费打赏）
+    pub min_amount_yuan: f64,
+    /// 礼物区最多同时显示的条数
+    pub max_rows: u32,
+    /// 连击合并窗口（秒）：同一观众同一种礼物在该时间内的多次送出合并为一行
+    pub combo_window_secs: u64,
+}
+
+impl Default for GiftConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_amount_yuan: 0.0,
+            max_rows: 5,
+            combo_window_secs: 5,
+        }
+    }
+}
+
+/// 礼物朗读配置
+///
+/// 与礼物列表（`GiftConfig`）各自独立：礼物区可以只显示大额、朗读门槛更低，
+/// 也可以关掉礼物区只朗读；连击合并窗口沿用 `GiftConfig::combo_window_secs`
+/// （同一个直播间里「连击」应该是同一个口径，不再单独配一份）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GiftTtsConfig {
+    /// 是否朗读打赏（独立于弹幕朗读总开关与礼物区显示开关）
+    pub enabled: bool,
+    /// 朗读金额门槛（元）：低于此价值的打赏不朗读（0 = 全部付费打赏）
+    pub min_amount_yuan: f64,
+}
+
+impl Default for GiftTtsConfig {
+    fn default() -> Self {
+        Self {
+            // 新增功能默认静默：升级后不会突然出声，由主播主动开启
+            enabled: false,
+            min_amount_yuan: 0.0,
+        }
+    }
+}
+
+/// 欢迎信息配置（进房 / 关注 / 分享 / 点赞 / 舰长进场）
+///
+/// 默认关：这类事件的量级比弹幕大（实测进房 : 弹幕在 1.5 : 1 ~ 10 : 1），
+/// 且在热度房里被限速后只剩 2% 左右的采样——它本来就是「冷房间看热闹」用的，
+/// 热度房里只会白占弹幕窗，所以由主播按房间情况自己开。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WelcomeConfig {
+    /// 是否在弹幕窗显示欢迎信息（关掉时 Rust 侧直接不广播）
+    pub enabled: bool,
+}
+
+impl Default for WelcomeConfig {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
+/// 最近连接过的直播间（主界面输入框下方面包屑，点击直连）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentRoom {
+    /// 直播间短号（`live.douyin.com/` 后面那串，连接时还要经 resolver 换真实 room_id）
+    pub room_id: String,
+    /// 主播昵称（接口获取失败为 None，前端回退显示房间号）
+    #[serde(default)]
+    pub uname: Option<String>,
+}
+
+/// 最近房间保留条数上限
+pub const RECENT_ROOM_LIMIT: usize = 10;
+
+/// 配置文件结构（后续里程碑扩展字段）
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ConfigFile {
+    pub auth: Option<AuthInfo>,
+    pub overlay_style: OverlayStyle,
+    pub overlay_bounds: Option<WindowBounds>,
+    pub danmaku_filter: DanmakuFilter,
+    pub tts: TtsConfig,
+    pub gift: GiftConfig,
+    pub gift_tts: GiftTtsConfig,
+    pub welcome: WelcomeConfig,
+    pub recent_rooms: Vec<RecentRoom>,
+}

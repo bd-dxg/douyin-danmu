@@ -1,0 +1,25 @@
+# Node
+node_modules/
+dist/
+Task/
+
+# Rust
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# 其他
+dev.log
+
+# 第三方签名脚本（DanmuFree 逆向 webmssdk 的产物，473 KB）
+# 由 scripts/copy-sign-js.ps1 从 probe/browser/sign_browser.js 生成；
+# 发布前需要定「构建时下载 还是 随包分发」，见 Task/task_plan.md 关键问题 2
+public/douyin-sign.js
+
+*.local
+.DS_Store
+
+# 根目录截图（UI 验证产物）
+/*.png
+
+# 探针跑出来的测试输出（协议调研的中间产物）
+probe/node/*.txt

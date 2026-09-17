@@ -1,0 +1,13 @@
+# 探针依赖与运行产物不进仓库
+node_modules/
+enter-dump.json
+pnpm-lock.yaml
+
+# 第三方代码/产物不进仓库（本仓是 GPL-3.0，下面这些的授权口径不一致）：
+# - sign/sign.js           字节跳动的 webmssdk 反混淆产物（DanmuFree 分发，MIT 只覆盖其自身代码）
+# - browser/sign_browser.js 上面那个切掉前 7 行 jsdom 补环境后的副本
+# - reference/             来自 saermart/DouyinLiveWebFetcher，该仓库是 **AGPL-3.0**
+# 拉取/生成方式见 README.md 的「怎么复跑」与仓库根目录 scripts/copy-sign-js.ps1
+sign/sign.js
+browser/sign_browser.js
+reference/
