@@ -18,7 +18,7 @@
 | 打赏形态 | **只有礼物** | 没有醒目留言、没有舰队；免费礼物（钻石价 0）不算打赏 |
 | 连击数量 | 服务端下发的是**累计值**（`combo_count`） | 本地**不要**再累加，否则连击数会变成平方 |
 | 身份 | 只有「用户等级（荣誉等级）」+「粉丝团（灯牌）等级」 | 没有房管 / 舰队 / 荣耀等级 / 粉丝牌名 |
-| 发送弹幕 | 首期不做 | 要另一套签名（a_bogus）+ 登录 cookie；发送框目前是禁用态提示 |
+| 发送弹幕 | 首期不做 | 要另一套签名（a_bogus）+ 登录 cookie；**发送框窗口当前不创建**（`lib.rs` 的 `SENDER_WINDOW_ENABLED = false`），实现后再打开 |
 
 ## 技术栈
 
@@ -42,10 +42,10 @@
 
 ### 目录
 
-- `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（发送框，禁用态）、`styles/settings.css`、`types/ipc.ts`
+- `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（发送框，**窗口当前不创建**）、`styles/settings.css`、`types/ipc.ts``
 - `src-tauri/src/`：`lib.rs`（组装）、`state.rs`、`commands.rs`、`connection.rs`（会话循环 + 重连）、`window.rs`（窗口与发送框吸附）、`gift.rs`（礼物列表：门槛 + 合并）、`welcome.rs`（欢迎信息：去重限速）、`tts/`（队列 `mod.rs`、文案 `text.rs`、礼物聚合 `gift.rs`、流水线 `worker.rs`、播放 `player.rs`、协议 `edge.rs`）、`config/`（读写 + 结构体 + DPAPI）、`update.rs`
 - `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（扫码登录）、`event.rs`（事件模型）
-- 多窗口：`index.html`（主窗）+ `overlay.html` + `sender.html` + `sign.html`（隐藏签名页），Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
+- 多窗口：`index.html`（主窗）+ `overlay.html` + `sign.html`（隐藏签名页）；`sender.html` 是发送框，**当前不创建**（`lib.rs` 的 `SENDER_WINDOW_ENABLED = false`）—— 首版只读，实现发送弹幕后再置 `true`，窗口定义 / 吸附逻辑 / `send_danmaku` 命令都保留着。Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
 
 ### 硬约定
 

@@ -27,6 +27,14 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use window::{capture_overlay_bounds, flush_overlay_bounds, sync_sender_docked};
 
+/// 是否创建发送弹幕框窗口
+///
+/// 首版只读（发送弹幕要另一套签名 `a_bogus` + 登录 cookie，见 `docs/技术说明.md`），
+/// 所以默认**不创建**——不摆一个用不了的输入框。
+/// 窗口定义、`src/sender/`、`send_danmaku` 命令、发送框吸附全部保留：
+/// 实现发送后把这里置 `true` 就回来了（`sync_sender_docked` 找不到窗口时自行跳过）。
+const SENDER_WINDOW_ENABLED: bool = false;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -167,25 +175,32 @@ pub fn run() {
                 }
             });
 
-            // Sender：发送框始终吸附在弹幕窗下方（无边框 / 置顶 / 跳过任务栏）
-            let sender_builder = WebviewWindowBuilder::new(
-                app,
-                "sender",
-                WebviewUrl::App("sender.html".into()),
-            )
-            .title("douyin-danmu 发送")
-            .inner_size(320.0, 80.0)
-            .decorations(false)
-            .transparent(true)
-            .always_on_top(true)
-            .resizable(false)
-            .skip_taskbar(true)
-            .shadow(false);
-            if sender_builder.build().is_err() {
-                log::error!("[sender] 创建失败");
+            // Sender：发送框始终吸附在弹幕窗下方（无边框 / 置顶 / 跳过任务栏）。
+            //
+            // **当前不创建**（SENDER_WINDOW_ENABLED = false）：首版只读，发弹幕还没做
+            // （要另一套签名 a_bogus + 登录 cookie），不如不摆一个用不了的输入框。
+            // 窗口与吸附逻辑全部保留：实现发送后把开关置 true 即可，sync_sender_docked
+            // 找不到窗口时会自行 a no-op（见 window.rs）。
+            if SENDER_WINDOW_ENABLED {
+                let sender_builder = WebviewWindowBuilder::new(
+                    app,
+                    "sender",
+                    WebviewUrl::App("sender.html".into()),
+                )
+                .title("douyin-danmu 发送")
+                .inner_size(320.0, 80.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .resizable(false)
+                .skip_taskbar(true)
+                .shadow(false);
+                if sender_builder.build().is_err() {
+                    log::error!("[sender] 创建失败");
+                }
+                // 创建后立即对齐到弹幕窗下方（覆盖默认位置/尺寸）
+                sync_sender_docked(app.handle());
             }
-            // 创建后立即对齐到弹幕窗下方（覆盖默认位置/尺寸）
-            sync_sender_docked(app.handle());
 
             // 主窗口 × → 最小化到托盘（不退出；由托盘菜单唤出/退出）
             if let Some(main_win) = app.get_webview_window("main") {
