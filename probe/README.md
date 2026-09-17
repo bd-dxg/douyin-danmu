@@ -70,6 +70,23 @@ nick=用户3077822122717 gift=小心心    giftId=463 diamond=1 combo=1 repeat=1
 
 抖音礼物既然要登录，App 就绕不开登录流程。好消息：签名本来就要用隐藏 WebView2，**同一个隐藏窗口可以兼做扫码登录**（登录后从 WebView2 里读 `ttwid` + `sessionid` 等 cookie）。
 
+## 发送弹幕（已实测，**结论留档：不做**）
+
+不做这个功能的原因：唯一可行的实现是把**整个直播间页**塞进隐藏窗口（见下），内存开销明显；而目标用户是主播与一起玩的水友，本来就开着语音，用不上弹幕。
+
+| 环节 | 结论 |
+| --- | --- |
+| 接口 | `GET https://live.douyin.com/webcast/room/chat/`，**参数全在 query**，没有 body（不是 POST） |
+| 成功判据 | **不能只看 `status_code`**：缺 `a_bogus` 时服务端照样回 `status_code: 0`，但**根本不广播** —— 房间里看不到，连自己订阅的弹幕窗也收不到。判据只能是「房间里真出现」 |
+| 签名 | **`a_bogus` 必需**，且只能由 webmssdk 生成：删掉它 → `20003`；带一个与 query 不匹配的旧签名 → 同样被拒。仓库里的 `sign/sign.js` 只导出 X-Bogus，生成不了它 |
+| msToken | **必需**：缺了回 `20003`（文案是 `User doesn't login`，会误导成登录问题）。可从任意 `enter` 响应头的 `X-Ms-Token` 取 |
+| 参数指纹 | `browser_name` / `browser_version` / 屏幕尺寸要与发请求的环境一致（WebView2 是 Edge，写死 Chrome 会被判异常），所以该由页面用 `navigator` 自己拼 |
+| 唯一可行做法 | 隐藏窗口加载 `https://live.douyin.com/{短号}`，用**页面自己的** `XMLHttpRequest` 发请求 —— 页面里的 webmssdk 会 hook XHR 自动补 `a_bogus`（实测可行）。代价：整个直播页真被加载（即使暂停了播放器） |
+| 回包通道 | 该页面上 `__TAURI_INTERNALS__` 调不通、`document.title` 不会同步到窗口标题（两条都实测失败）；能用的是 **cookie**（页面写、Rust 用 `WebviewWindow::cookies()` 读） |
+| 错误码 | `20003` = 未登录 / 风控 / 缺 token（文案分不出）；`50007` = 房间级拒绝（实测：同一房间用浏览器能发，但刚跨房间连发就被回 50007） |
+
+> 踩坑：`status_code: 0` 一开始骗过了我们 —— 只看响应会以为「去掉 `a_bogus` 也能发」，实际服务端只是**假成功**。换成「房间里有没有真出现」当判据才看清。
+
 ## 怎么复跑
 
 ```powershell
