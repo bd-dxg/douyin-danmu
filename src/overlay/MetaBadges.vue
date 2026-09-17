@@ -24,12 +24,13 @@ defineProps<{
 
 <template>
   <span class="meta">
-    <!-- 等级列（固定宽度，无徽章留空）→ 各行正文列垂直对齐 -->
+    <!-- 等级列（固定宽度，无徽章留空）→ 各行正文列垂直对齐。
+         顺序：灯牌在前、等级在后（用户指定）；两枚徽章都已定宽，互换不影响后面的起点。 -->
     <span class="level-slot">
-      <span v-if="overlayStyle.show_level && level && level > 0" class="chip lv">LV{{ level }}</span>
       <span v-if="overlayStyle.show_fansclub && fansClubLevel && fansClubLevel > 0" class="chip fansclub">
         灯牌{{ fansClubLevel }}
       </span>
+      <span v-if="overlayStyle.show_level && level && level > 0" class="chip lv">LV{{ level }}</span>
     </span>
   </span>
 </template>
