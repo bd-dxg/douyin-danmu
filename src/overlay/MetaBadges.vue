@@ -24,8 +24,8 @@ defineProps<{
 
 <template>
   <span class="meta">
-    <!-- 等级列（固定宽度，无徽章留空）→ 各行正文列垂直对齐。
-         顺序：灯牌在前、等级在后（用户指定）；两枚徽章都已定宽，互换不影响后面的起点。 -->
+    <!-- 徽章列（固定宽度，无徽章留空）→ 各行正文列垂直对齐。
+         顺序：灯牌在前、等级在后；两枚徽章都已定宽，互换不影响后面的起点。 -->
     <span class="level-slot">
       <span v-if="overlayStyle.show_fansclub && fansClubLevel && fansClubLevel > 0" class="chip fansclub">
         灯牌{{ fansClubLevel }}
@@ -48,19 +48,20 @@ defineProps<{
   margin-top: 0.3em;
 }
 
-/* 等级列：宽度 5.6em + 右间距 0.7em = 正文列起点。
+/* 徽章列：宽度 5.6em + 右间距 0.7em = 正文列起点。
    宽度是**量出来的**（headless Chrome 跑同一套 CSS，根字号 17px）：
-   「LV21 + 灯牌10」这种最长组合 = 5.28em，故取 5.6em 留一点余量。
-   微章**左对齐**（justify-content: flex-start）：只有 LV 的行徽章窄、带灯牌的行宽，
-   而灯牌等级 1 位 / 2 位又差一个字——靠右站时各行 LV 徽章的左边缘会随之左右飘
-   （真机反馈「看着不齐」）。左对齐后徽章都从列左边缘排起，列宽固定又保证正文列照样对齐。
-   为什么必须给够宽：这里是 overflow: hidden，内容一超宽就从**右边**裁。
+   「灯牌99 + LV99」= 48.22 + 3.4 + 38.14 = 89.76px = 5.28em，故取 5.6em 留一点余量。
+   徽章**右对齐**：两枚徽章都定宽后，徽章组的宽度只有「有灯牌 / 没灯牌」两种，
+   右对齐时各行徽章位置完全一致（LV 永远在同一条竖线上），且都紧贴正文列——
+   左对齐则相反：没灯牌的行会在 LV 与用户名之间空出一大段（真机反馈「离谱」）。
+   为什么必须给够宽：这里是 overflow: hidden，内容一超宽就从**左边**裁
+   （真机出过「LV20 显示成 V20」的事故）。
    间距不能再小：面板背景左边缘要落在这一段的中间，否则徽章会贴着背景边（见 OverlayApp 的 --panel-inset）。
    改这里的宽度必须同步 OverlayApp 的 --level-indent 与 window.rs 的 LEVEL_INDENT_EM。 */
 .level-slot {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 0.2em;
   width: 5.6em;
   margin-right: 0.7em;
@@ -85,10 +86,10 @@ defineProps<{
 }
 
 /* 等级徽章：金色。
-   min-width 让 LV4 与 LV30 一样宽（按 2 位数字算）：灯牌要自成列，LV 的位数就不能
-   再影响灯牌的起点。2.43em 是量出来的 —— 「LV99」总宽 38.14px 减去左右 padding 7.55px
-   = 内容 30.59px，再除以 chip 字号 12.58px（.chip 默认 content-box，min-width 只算内容）。
-   列宽仍然够：最长组合「LV99 + 灯牌99」= 38.14 + 3.4 + 48.22 = 89.76px = 5.28em < 5.6em。 */
+   min-width 让 LV4 与 LV30 一样宽（按 2 位数字算）：徽章定宽后，右对齐时各行 LV
+   才会落在同一条竖线上。2.43em 是量出来的 —— 「LV99」总宽 38.14px 减去左右 padding
+   7.55px = 内容 30.59px，再除以 chip 字号 12.58px（.chip 默认 content-box，min-width 只算内容）。
+   列宽仍然够：最长组合「灯牌99 + LV99」= 89.76px = 5.28em < 5.6em。 */
 .chip.lv {
   color: #6b4a00;
   background: linear-gradient(180deg, #ffe08a, #f0b429);
@@ -96,10 +97,10 @@ defineProps<{
 }
 
 /* 粉丝团（灯牌）徽章：深蓝底 + 白字（只写等级不写名字）。
-   同 .chip.lv 一样定宽（照 bili-danmu 的做法：两个徽章各自定宽，后面内容的起点才固定）——
-   不定宽时「灯牌7」与「灯牌11」差一个数字宽，右边缘会参差。
+   同 .chip.lv 一样定宽（照 bili-danmu 的做法：两个徽章各自定宽，徽章组宽度才恒定）——
+   不定宽时「灯牌7」与「灯牌11」差一个数字宽，右对齐下会把 LV 推得左右飘，右边缘也参差。
    3.23em 也是量出来的：「灯牌99」总宽 48.22px 减去 padding 7.55px = 内容 40.67px，
-   除以 chip 字号 12.58px。（列宽 5.6em 仍够：38.14 + 3.4 + 48.22 = 89.76px = 5.28em）
+   除以 chip 字号 12.58px。（列宽 5.6em 仍够：48.22 + 3.4 + 38.14 = 89.76px = 5.28em）
 
    浅蓝底（#7dd3fc）+ 白字的对比度只有 ~1.9:1，真机反馈「看着费劲」；
    现在渐变两端与白字的对比度是 4.7:1 → 7.6:1（WCAG AA 要求 ≥ 4.5:1）。 */
