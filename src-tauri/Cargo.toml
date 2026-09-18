@@ -1,6 +1,6 @@
 [package]
 name = "douyin-danmu"
-version = "0.1.1"
+version = "0.1.2"
 description = "轻量级抖音直播弹幕助手"
 license = "GPL-3.0"
 edition = "2021"
