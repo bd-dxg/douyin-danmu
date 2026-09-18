@@ -4,6 +4,7 @@
 //! 这里只做「读内存态 / 写内存态 + 广播事件 + 落盘」的薄封装，业务逻辑不落在此处。
 
 use crate::config;
+use crate::douyin::login_helper::{COOKIE_PREFIX, LOGIN_HELPER_ARG};
 use crate::state::{prune_ticks, AppState, OverlayState};
 use crate::tts;
 use crate::window::{overlay_window, sync_sender_docked};
@@ -225,14 +226,70 @@ pub(crate) fn get_login_info(state: State<'_, AppState>) -> serde_json::Value {
     json!({ "loggedIn": logged_in })
 }
 
+/// 扫码登录：spawn 一个 helper 子进程（同一个 exe，带 `--login-helper`）去加载抖音登录页
+///
+/// 为什么不开在本进程：抖音首页会让 WebView2 自动播放视频流、把 GPU 进程顶到 1 GB 峰值，
+/// 窗口销毁后还有约 84 MB 的 GPU 缓存残留（进程级，不随窗口回收）。子进程退出
+/// 是唯一能确定全额归还内存的方式（见 `douyin/login_helper.rs`）。
+///
+/// 命令一直悬着直到子进程结束（成功 / 超时 / 窗口被关），调用方要自己显示进行中状态。
+#[tauri::command]
+pub(crate) async fn douyin_login_open(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| format!("取程序路径失败：{e}"))?;
+    // output() 会阻塞线程，丢进阻塞线程池等（helper 最长活 300 秒）
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        std::process::Command::new(exe)
+            .arg(LOGIN_HELPER_ARG)
+            .output()
+    })
+    .await
+    .map_err(|e| format!("等待登录进程失败：{e}"))?
+    .map_err(|e| format!("启动登录进程失败：{e}"))?;
+
+    if !out.status.success() {
+        // 失败原因在 helper 的 stderr 上，转记进主程序日志（不把技术细节抛给用户）
+        let reason = String::from_utf8_lossy(&out.stderr);
+        log::warn!("[login] 登录进程未完成：{}", reason.trim());
+        return Err("登录未完成（窗口被关闭或超时），请重试".into());
+    }
+    let cookie = helper_cookie(&out.stdout).ok_or("登录进程没有回传 Cookie，请重试")?;
+    let auth = config::AuthInfo { cookies: cookie };
+    config::save_auth(&app, &auth)?;
+    *state.auth.lock().unwrap() = Some(auth);
+    log::info!("[login] 抖音登录成功，Cookie 已加密落盘（礼物消息从下次连接开始可收）");
+    Ok(())
+}
+
+/// 从 helper 的 stdout 里挑出 Cookie 那一行（helper 用前缀标记，避免混入其它输出）
+fn helper_cookie(stdout: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix(COOKIE_PREFIX))
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+}
+
 /// 退出登录（清本地登录态 + 清 WebView2 里的抖音登录）
 ///
 /// 光清本地配置不够：WebView2 的 cookie 库里还登着，再点一次「登录」会秒过，
-/// 用户会以为退出没生效。clear_all_browsing_data 把 cookie 库一并清掉。
+/// 用户会以为退出没生效。
+/// - 登录页的 cookie 在 helper 的独立 WebView2 目录里（`login-webview`），整目录删掉
+/// - 主程序的 WebView2 里可能还留着老版本的登录 cookie（那时登录页跑在主进程里），
+///   再走一次 `clear_all_browsing_data` 兜底
 #[tauri::command]
 pub(crate) fn logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     *state.auth.lock().unwrap() = None;
     config::clear_auth(&app)?;
+    if let Ok(dir) = crate::douyin::login::login_webview_dir(&app) {
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => log::info!("[login] 已清除登录页 WebView2 目录"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => log::warn!("[login] 清除登录页 WebView2 目录失败：{e}"),
+        }
+    }
     if let Some(win) = app.get_webview_window(crate::douyin::signer::SIGN_WINDOW_LABEL) {
         let _ = win.clear_all_browsing_data();
     }

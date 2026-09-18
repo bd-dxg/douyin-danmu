@@ -7,8 +7,8 @@
 //! 经命令 `sign_reply` 送回来，这里按 id 用 oneshot 对上一次请求。
 //!
 //! 页面是构建产物里的 `sign.html`（加载 `douyin-sign.js` = 探针验证过的 `sign_browser.js`）。
-//! 同一个窗口后面还要兼做扫码登录（阶段 5b），登录时它被导航到抖音登录页，
-//! 那期间签名会回 `NOT_READY`，所以「未就绪」是**重试**而不是报错。
+//! 这个窗口**只做签名**：扫码登录跑在独立的 helper 进程里（`login_helper.rs`），
+//! 不会再把本窗口导航走。页面刚加载完那一下签名会回 `NOT_READY`，所以「未就绪」是**重试**而不是报错。
 
 use super::sign::{SignError, SignFuture, Signer};
 use std::collections::HashMap;
@@ -18,7 +18,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::oneshot;
 
-/// 签名窗口的 label（登录复用同一个窗口）
+/// 签名窗口的 label（扫码登录已改到独立 helper 进程，不再复用这个窗口）
 pub const SIGN_WINDOW_LABEL: &str = "sign";
 
 /// 单次签名等待上限（实测 webmssdk 一次约 10–30 ms）

@@ -9,6 +9,7 @@
 
 pub mod event;
 pub mod login;
+pub mod login_helper;
 pub mod parser;
 pub mod proto;
 pub mod resolver;

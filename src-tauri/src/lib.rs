@@ -3,7 +3,7 @@
 //! 连接流程：connect_room(短号) → resolver 换真实 room_id + ttwid → 签名（隐藏 WebView2）
 //!   → WS 握手 → 10s 心跳 + 回 ack → 解出抖音事件 → 分发给弹幕窗 / 朗读 / 礼物 / 欢迎
 //! 登录：抖音只在**登录态**下推礼物消息（弹幕/进场/关注/点赞匿名就可收），
-//! 登录走同一个隐藏窗口（阶段 5b），Cookie 持久化时经 DPAPI 加密。
+//! 登录跑在独立的 helper 子进程里（`douyin/login_helper.rs`），Cookie 持久化时经 DPAPI 加密。
 //!
 //! 模块分工：状态见 `state.rs`，IPC 命令见 `commands.rs`，连接与重连见 `connection.rs`，
 //! 窗口辅助见 `window.rs`；本文件只做组装（状态托管、日志插件、窗口创建、托盘、命令注册）。
@@ -37,6 +37,14 @@ const SENDER_WINDOW_ENABLED: bool = false;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 登录 helper：同一个 exe 的第二种身份（见 douyin/login_helper.rs）。
+    // 必须在注册单实例插件**之前**分流，否则本进程会被已在运行的主实例
+    // 当成「第二个实例」顶掉，登录页永远打不开。
+    if std::env::args().any(|a| a == douyin::login_helper::LOGIN_HELPER_ARG) {
+        douyin::login_helper::run_login_helper();
+        return;
+    }
+
     let app = tauri::Builder::default()
         // 单实例：必须最先注册——第二个实例在插件初始化阶段就退出，
         // 不会走到 setup 去建托盘/Overlay/连接；同时唤出已有实例的主窗口
@@ -83,6 +91,18 @@ pub fn run() {
         .manage(gift::GiftState::default())
         .manage(welcome::WelcomeState::default())
         .setup(|app| {
+            // 主窗口在这里手动建，不再由 tauri.conf.json 的 app.windows 自动创建：
+            // 那个数组是整个 exe 共用的，helper 模式下也会被自动建出来，而 helper 的
+            // WebView2 必须用独立 user data folder（见 douyin/login_helper.rs），
+            // 只有手动建窗才能给单个窗口设 data_directory。
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                .title("douyin-danmu")
+                .inner_size(880.0, 650.0)
+                .min_inner_size(520.0, 420.0)
+                .resizable(true)
+                .center()
+                .build()?;
+
             // 加载持久化配置：登录态 → AppState.auth；样式/位置 → OverlayState
             let cfg = config::load_config(app.handle());
             if let Some(auth) = &cfg.auth {
@@ -112,8 +132,9 @@ pub fn run() {
             }
             tts::spawn_worker(app.handle().clone());
 
-            // 抖音签名：隐藏 WebView2 窗口（跑 webmssdk 的 getSign，后面还兼做扫码登录）
-            // 启动就建，避免第一次点「连接」时还要等页面加载；托管签名器供命令回包路由
+            // 抖音签名：隐藏 WebView2 窗口（跑 webmssdk 的 getSign）
+            // 启动就建，避免第一次点「连接」时还要等页面加载；托管签名器供命令回包路由。
+            // 扫码登录不再复用这个窗口（跑在独立 helper 进程里，见 douyin/login_helper.rs）
             app.manage(douyin::signer::WebviewSigner::new(app.handle().clone()));
             if let Err(e) = douyin::signer::create_window(app.handle()) {
                 log::error!("[sign] 签名窗口创建失败: {e}");
@@ -281,7 +302,7 @@ pub fn run() {
             connection::get_connection_status,
             commands::get_login_info,
             commands::logout,
-            douyin::login::douyin_login_open,
+            commands::douyin_login_open,
             commands::send_danmaku,
             commands::overlay_set_visible,
             commands::overlay_set_clickthrough,
