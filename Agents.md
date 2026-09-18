@@ -44,8 +44,9 @@
 
 - `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（发送框，**窗口当前不创建**）、`styles/settings.css`、`types/ipc.ts``
 - `src-tauri/src/`：`lib.rs`（组装）、`state.rs`、`commands.rs`、`connection.rs`（会话循环 + 重连）、`window.rs`（窗口与发送框吸附）、`gift.rs`（礼物列表：门槛 + 合并）、`welcome.rs`（欢迎信息：去重限速）、`tts/`（队列 `mod.rs`、文案 `text.rs`、礼物聚合 `gift.rs`、流水线 `worker.rs`、播放 `player.rs`、协议 `edge.rs`）、`config/`（读写 + 结构体 + DPAPI）、`update.rs`
-- `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（扫码登录）、`event.rs`（事件模型）
-- 多窗口：`index.html`（主窗）+ `overlay.html` + `sign.html`（隐藏签名页）；`sender.html` 是发送框，**当前不创建**（`lib.rs` 的 `SENDER_WINDOW_ENABLED = false`）—— 首版只读，实现发送弹幕后再置 `true`，窗口定义 / 吸附逻辑 / `send_danmaku` 命令都保留着。Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
+- `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（登录页：建窗 / 读 Cookie / 等扫码）、`login_helper.rs`（登录子进程入口）、`event.rs`（事件模型）
+- 多窗口：`index.html`（主窗）+ `overlay.html` + `sign.html`（隐藏签名页）+ 登录子进程自建的登录窗（label `login`）；`sender.html` 是发送框，**当前不创建**（`lib.rs` 的 `SENDER_WINDOW_ENABLED = false`）—— 首版只读，实现发送弹幕后再置 `true`，窗口定义 / 吸附逻辑 / `send_danmaku` 命令都保留着。Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
+- **主窗不在 `tauri.conf.json` 里定义**（`app.windows` 是空的，改在 `lib.rs` 的 setup 里建）：那个数组是整个 exe 共用的，helper 模式下也会被自动建出来，而 helper 的 WebView2 必须用独立 user data folder，自动建的窗口设不了 `data_directory`
 
 ### 硬约定
 
@@ -70,7 +71,10 @@
 6. 解不开的帧**只丢帧不重连**（抖音会夹带格式异常的帧，重连代价是多跑一轮签名）
 7. `proto::inflate` 只看偏移 0 的 gzip 魔数（探针是扫全串）。真机若出现「帧解不出 Response」而单测全绿，先怀疑这里
 8. **登录窗口不能窄**：抖音页面是响应式的，窄到 ~600px 以下顶部栏折叠、「登录」入口直接不渲染（真机踩过：520 宽的窗口里根本找不到登录按钮）。现在是 1180×820 / 最小 1000×680
-9. 退出登录要连 WebView2 的 cookie 库一起清（`clear_all_browsing_data`），否则「退出」后一点登录就秒过
+9. 退出登录要清两处：登录子进程的 `login-webview` 目录（整目录删）+ 主程序 WebView2 的 `clear_all_browsing_data()`（老版本把登录页跑在主进程里，可能留了 cookie），否则「退出」后一点登录就秒过
+10. **登录页跑在独立子进程**（`douyin-danmu.exe --login-helper`）：抖音首页自动播放视频流会把 WebView2 的 GPU 进程顶到 1 GB 上下（`login.rs` 里已用 `--autoplay-policy` 关掉），窗口销毁后还有约 84 MB 残留。分流必须在 `lib.rs` 注册单实例插件**之前**，否则子进程会被主实例当成「第二个实例」顶掉
+11. **helper 的 WebView2 必须用独立 user data folder**（`login-webview`）：WebView2 不允许两个环境（两个进程）指向同一个目录。给窗口设 `data_directory` 是 `WebviewWindowBuilder` 的能力，这也是 `tauri.conf.json` 的 `app.windows` 必须清空的原因
+12. **`additional_browser_args` 会整串替换 wry 的默认参数**：默认是 `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`，自己传参时必须把它带上
 
 ## 身份徽章（等级 / 灯牌）的字段口径
 
