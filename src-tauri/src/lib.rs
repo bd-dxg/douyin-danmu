@@ -27,13 +27,13 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use window::{capture_overlay_bounds, flush_overlay_bounds, sync_sender_docked};
 
-/// 是否创建发送弹幕框窗口
+/// 是否创建底部吸附小窗（label `sender`）
 ///
-/// 首版只读（发送弹幕要另一套签名 `a_bogus` + 登录 cookie，见 `docs/技术说明.md`），
-/// 所以默认**不创建**——不摆一个用不了的输入框。
-/// 窗口定义、`src/sender/`、`send_danmaku` 命令、发送框吸附全部保留：
-/// 实现发送后把这里置 `true` 就回来了（`sync_sender_docked` 找不到窗口时自行跳过）。
-const SENDER_WINDOW_ENABLED: bool = false;
+/// 发送弹幕未实现（要另一套签名 `a_bogus` + 登录 cookie，见 `docs/技术说明.md`），
+/// 所以窗口里**不放输入框**，只放一个「穿透」开关按钮：穿透开启后弹幕窗不再接收
+/// 鼠标事件，放在弹幕窗里的按钮会点不到，必须有个不随穿透失效的独立窗口来关它。
+/// 实现发送后把 `SenderApp.vue` 换回输入框即可（窗口定义 / `send_danmaku` 命令都保留着）。
+const SENDER_WINDOW_ENABLED: bool = true;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -196,20 +196,16 @@ pub fn run() {
                 }
             });
 
-            // Sender：发送框始终吸附在弹幕窗下方（无边框 / 置顶 / 跳过任务栏）。
-            //
-            // **当前不创建**（SENDER_WINDOW_ENABLED = false）：首版只读，发弹幕还没做
-            // （要另一套签名 a_bogus + 登录 cookie），不如不摆一个用不了的输入框。
-            // 窗口与吸附逻辑全部保留：实现发送后把开关置 true 即可，sync_sender_docked
-            // 找不到窗口时会自行 a no-op（见 window.rs）。
+            // Sender：底部吸附小窗（穿透开关）始终吸附在弹幕窗下方（无边框 / 置顶 / 跳过任务栏）。
+            // 发送弹幕未实现，故窗口里只放「穿透」按钮（见 SENDER_WINDOW_ENABLED 的说明）。
             if SENDER_WINDOW_ENABLED {
                 let sender_builder = WebviewWindowBuilder::new(
                     app,
                     "sender",
                     WebviewUrl::App("sender.html".into()),
                 )
-                .title("douyin-danmu 发送")
-                .inner_size(320.0, 80.0)
+                .title("douyin-danmu 穿透")
+                .inner_size(96.0, 32.0)
                 .decorations(false)
                 .transparent(true)
                 .always_on_top(true)
