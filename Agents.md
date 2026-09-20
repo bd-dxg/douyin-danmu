@@ -42,16 +42,16 @@
 
 ### 目录
 
-- `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（发送框，**窗口当前不创建**）、`styles/settings.css`、`types/ipc.ts``
-- `src-tauri/src/`：`lib.rs`（组装）、`state.rs`、`commands.rs`、`connection.rs`（会话循环 + 重连）、`window.rs`（窗口与发送框吸附）、`gift.rs`（礼物列表：门槛 + 合并）、`welcome.rs`（欢迎信息：去重限速）、`tts/`（队列 `mod.rs`、文案 `text.rs`、礼物聚合 `gift.rs`、流水线 `worker.rs`、播放 `player.rs`、协议 `edge.rs`）、`config/`（读写 + 结构体 + DPAPI）、`update.rs`
+- `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（弹幕窗下方的**穿透小控件**；发送弹幕未实现，无输入框）、`styles/settings.css`、`types/ipc.ts``
+- `src-tauri/src/`：`lib.rs`（组装）、`state.rs`、`commands.rs`、`connection.rs`（会话循环 + 重连）、`window.rs`（窗口与穿透小控件吸附）、`gift.rs`（礼物列表：门槛 + 合并）、`welcome.rs`（欢迎信息：去重限速）、`tts/`（队列 `mod.rs`、文案 `text.rs`、礼物聚合 `gift.rs`、流水线 `worker.rs`、播放 `player.rs`、协议 `edge.rs`）、`config/`（读写 + 结构体 + DPAPI）、`update.rs`
 - `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（登录页：建窗 / 读 Cookie / 等扫码）、`login_helper.rs`（登录子进程入口）、`event.rs`（事件模型）
-- 多窗口：`index.html`（主窗）+ `overlay.html` + `sign.html`（隐藏签名页）+ 登录子进程自建的登录窗（label `login`）；`sender.html` 是发送框，**当前不创建**（`lib.rs` 的 `SENDER_WINDOW_ENABLED = false`）—— 首版只读，实现发送弹幕后再置 `true`，窗口定义 / 吸附逻辑 / `send_danmaku` 命令都保留着。Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
+- 多窗口：`index.html`（主窗）+ `overlay.html` + `sign.html`（隐藏签名页）+ 登录子进程自建的登录窗（label `login`）；`sender.html` 是弹幕窗下方的**穿透小控件**（`lib.rs` 的 `SENDER_WINDOW_ENABLED = true`）—— 发送弹幕不做（见上表），窗口里只放一个穿透开关；穿透开启后弹幕窗收不到鼠标事件，必须靠这个独立窗口才能关回来。Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
 - **主窗不在 `tauri.conf.json` 里定义**（`app.windows` 是空的，改在 `lib.rs` 的 setup 里建）：那个数组是整个 exe 共用的，helper 模式下也会被自动建出来，而 helper 的 WebView2 必须用独立 user data folder，自动建的窗口设不了 `data_directory`
 
 ### 硬约定
 
 - 注释与 commit 一律简体中文
-- **布局契约（改一处必须同步三处）**：`MetaBadges.vue` 的 `.level-slot`（徽章列宽 5.6em + 右间距 0.7em）→ `OverlayApp.vue` 的 `--level-indent`（6.3em）→ `window.rs` 的 `LEVEL_INDENT_EM`（6.3）。发送框的左缩进用的是同一个数，不同步就会吸附错位。列宽是**量出来的**（最长「等级 + 灯牌」徽章组合 5.28em），要改就重新量
+- **布局契约（改一处必须同步三处）**：`MetaBadges.vue` 的 `.level-slot`（徽章列宽 5.6em + 右间距 0.7em）→ `OverlayApp.vue` 的 `--level-indent`（6.3em）→ `window.rs` 的 `LEVEL_INDENT_EM`（6.3）。穿透小控件（sender 窗口）的左缩进用的是同一个数，不同步就会吸附错位。列宽是**量出来的**（最长「等级 + 灯牌」徽章组合 5.28em），要改就重新量
 - `MetaBadges.vue`、`row-style.ts` 是弹幕行与礼物行**故意共用**的（两区正文列要对齐），别复制一份改单侧
 - 弹幕窗性能敏感（120 条上限、透明层重绘）：入场动画只动 `transform` / `opacity`，**不要**给行加 `will-change`，也不要逐帧改 height / margin
 - 日志一律 `log::info!/warn!/error!`，**禁止 `println!` / `eprintln!`**（release 是 `windows_subsystem = "windows"`，stderr 直接丢）；日志里不得出现完整 Cookie
