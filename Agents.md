@@ -24,7 +24,7 @@
 
 - 前端：Vue 3（`<script setup>`）+ Vite + TypeScript，包管理 pnpm
 - 桌面壳：Tauri 2（Rust，edition 2021）
-- Rust 关键依赖：tokio / reqwest（json、gzip）/ tokio-tungstenite（弹幕 WS + Edge TTS WS）/ native-tls（Edge TTS 自建 TCP 后包 TLS）/ futures-util / flate2（弹幕 gzip）/ md-5（签名素材）/ sha2（Edge TTS 的 Sec-MS-GEC）/ windows-sys（DPAPI、winmm 播放、ShellExecuteW）/ tauri-plugin-log
+- Rust 关键依赖：tokio / reqwest（json、gzip）/ tokio-tungstenite（弹幕 WS + Edge TTS WS）/ native-tls（Edge TTS 自建 TCP 后包 TLS）/ futures-util / flate2（弹幕 gzip）/ md-5（签名素材）/ sha2（随机 hex / ConnectionId 生成）/ windows-sys（DPAPI、winmm 播放、ShellExecuteW）/ tauri-plugin-log
 - 授权：GPL-3.0
 
 ## 常用命令
@@ -33,7 +33,7 @@
 - 开发运行：`pnpm tauri dev`（Vite 热更 + Rust 调试一起跑；Rust 改动会自动重编译重启）
 - 仅前端：`pnpm dev`；前端构建：`pnpm build`
 - 打包：`pnpm tauri build`（产物在 `src-tauri/target/release/bundle/nsis/`）
-- 纯 Rust：在 `src-tauri/` 下 `cargo check` / `cargo test --lib`（`-- --ignored` 是 4 个联网测试：Edge TTS 合成、音色列表、突发失败率、更新检查）
+- 纯 Rust：在 `src-tauri/` 下 `cargo check` / `cargo test --lib`（`-- --ignored` 是 5 个联网测试：Edge TTS 合成、音色列表、时钟偏差恢复、突发失败率、更新检查）
 - **签名 JS 不在仓库里**（第三方产物，见 `probe/README.md`）：新克隆的仓库先跑 `pwsh -File scripts/copy-sign-js.ps1`
 - 探针（都在 `probe/node/`）：`ws-probe.cjs`（协议）、`walk-rooms.cjs`（沿 `similar_rooms` 找正在直播的房间，抓样本用）
   - 含中文的 `.ps1` 必须用 `pwsh` 跑（Windows PowerShell 5.1 会按 GBK 解码无 BOM 的 UTF-8 文件，中文被拆坏后连引号都会解析出错）
@@ -88,7 +88,9 @@
 
 ## 朗读（Edge TTS）
 
-- 协议集中在 `tts/edge.rs`（音色表 `edge/voices.rs`、SSML `edge/ssml.rs`）：改协议用 `scripts/edge-tts-probe.ps1` 验证
+- 协议集中在 `tts/edge.rs`（音色表 `edge/voices.rs`、SSML `edge/ssml.rs`、DRM 令牌 `edge/drm.rs`）：改协议用 `scripts/edge-tts-probe.ps1` 验证（`-SelfTest` 可离线自检令牌算法）
+- `Sec-MS-GEC` 令牌是 **v2**（`tts/edge/drm.rs`，`Sec-MS-GEC-Version: 2-…`）：微软 2026-10 起强制，v1（纯 SHA256 + `1-` 前缀）在部分地区已握手上报 403，现象是本地能朗读、别人不能。v2 = `<16 hex CS64>-<64 hex SHA256>`，两套哈希的常数都被刻意改过，**不能**换成 `sha2` 标准实现；唯一可信的回归判据是官方向量单测 `cargo test --lib drm`。另外 ticks 必须走浮点路径，别「优化」成整数运算——官方实测某些时间戳会因此错开、令牌失配
+- 握手被 403 拒绝时 `connect` 会按响应头 `Date` 校准本机时钟偏差再重试一次（`drm.rs` 的 `CLOCK_SKEW_MS`，官方同款）：偏差超过 5 分钟窗口时令牌怎么算都错、表现同样是「朗读全挂、弹幕正常」，本机时钟不准的用户靠这条自愈（联网回归测试 `edge_recovers_from_clock_skew_live`）
 - 播放走 winmm MCI + 固定临时文件；依赖队列串行（同一时刻只有一个 MCI 句柄）；`max_len` 只约束弹幕正文
 - 停播有两条**互不相同**的路径，别合并：①`epoch` 递增 = 作废还没开播的在途音频；②`player::play_mp3` 的 `stop_now` 闭包 = 每 100ms 查总开关。`force = true`（试听 / 礼物朗读）两道都免疫
 - **Edge TTS 不接受连接复用**（同一连接发第二轮必被 RST），`synthesize` 每条新建连接，别改成连接池
