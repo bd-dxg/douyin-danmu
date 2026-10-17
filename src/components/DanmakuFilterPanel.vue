@@ -70,7 +70,7 @@ function emitChange() {
       <input v-model="draft.enable_level" type="checkbox" class="switch" @change="emitChange()" />
     </div>
     <p class="tip">
-      抖音不是每条弹幕都带等级，拿不到等级的那条会被当成「不够级」一并过滤掉（没有等级的弹幕很多时，开了这个会安静得很快）。
+      抖音不是每条弹幕都带等级，拿不到等级的会被当成「不够级」一并过滤掉（没等级的弹幕多时，开了会安静得很快）。
     </p>
   </div>
 
@@ -79,13 +79,11 @@ function emitChange() {
       <span class="label">屏蔽含敏感词的弹幕</span>
       <input v-model="draft.enable_sensitive" type="checkbox" class="switch" @change="emitChange()" />
     </div>
-    <p class="tip">
-      每行一个关键词（也可以用逗号隔开）。弹幕里出现其中任何一个词，整条就不{{ verb }}； 上面的等级筛选拦不住它。
-    </p>
+    <p class="tip">每行一个关键词（也可以用逗号隔开），命中任意一个就整条不{{ verb }}；上面的等级筛选拦不住它。</p>
     <textarea
       v-model="sensitiveText"
       class="words-input"
-      rows="5"
+      rows="3"
       placeholder="每行一个关键词，如：加群 / 广告, 代练"></textarea>
     <div class="words-actions">
       <button class="save-btn" @click="emitChange()">保存敏感词</button>
