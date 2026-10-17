@@ -53,18 +53,14 @@ pub fn spawn_worker(app: AppHandle) {
             let play_app = player_app.clone();
             let data = chunk.data;
             let _ = tokio::task::spawn_blocking(move || {
-                let expired =
-                    || epoch != play_app.state::<TtsState>().epoch.load(Ordering::Relaxed);
+                let expired = || epoch != play_app.state::<TtsState>().epoch.load(Ordering::Relaxed);
                 // 只有「关掉弹幕朗读总开关」才立刻停下；被打断的只是还没开播的音频
                 // （见 interrupt_if_backlogged），且试听与礼物朗读不受总开关限制
                 let stop_now = || !force && !play_app.state::<TtsState>().is_enabled();
                 super::player::play_mp3(&data, expired, stop_now)
             })
             .await;
-            player_app
-                .state::<TtsState>()
-                .playing
-                .store(false, Ordering::Relaxed);
+            player_app.state::<TtsState>().playing.store(false, Ordering::Relaxed);
         }
     });
 
@@ -94,9 +90,7 @@ pub fn spawn_worker(app: AppHandle) {
                     let state = app.state::<TtsState>();
                     // 弹幕在合成期间可能已被关掉或被打断，丢弃过期产物，别出声音；
                     // 礼物朗读与试听（`force`）不参与打断：一旦入队就念完
-                    let keep = item.force
-                        || (state.config().enabled
-                            && state.epoch.load(Ordering::Relaxed) == epoch);
+                    let keep = item.force || (state.config().enabled && state.epoch.load(Ordering::Relaxed) == epoch);
                     drop(state);
                     if keep
                         && play_tx
@@ -130,11 +124,7 @@ pub fn spawn_worker(app: AppHandle) {
             log::error!("[tts] 连续失败 {consecutive_fail} 次，丢弃积压共暂停 {backoff:?} 后重试");
             // 只丢待朗读的弹幕：试听与礼物朗读保留——大额打赏只来一次，
             // 宁晚勿失（退避结束、服务端恢复后补念）
-            app.state::<TtsState>()
-                .queue
-                .lock()
-                .unwrap()
-                .retain(|item| item.force);
+            app.state::<TtsState>().queue.lock().unwrap().retain(|item| item.force);
             tokio::time::sleep(backoff).await;
         }
     });

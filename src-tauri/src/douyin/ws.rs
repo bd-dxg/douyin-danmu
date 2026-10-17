@@ -22,7 +22,8 @@ use tokio_util::sync::CancellationToken;
 
 /// 弹幕 WS 域名。**必须带 `-ws-web-`**（`webcast3-ws-web-lf`），换别的子域握不上手
 const WS_HOST: &str = "wss://webcast3-ws-web-lf.douyin.com/webcast/im/push/v2/";
-const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+const UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const ORIGIN: &str = "https://live.douyin.com";
 
 /// 心跳间隔。实测 40 秒不心跳也不被踢，取探针与 DanmuFree 的 10 秒留足余量
@@ -115,11 +116,7 @@ pub fn generate_user_unique_id() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    format!(
-        "1{:013}{:05}",
-        now.as_millis() as u64,
-        now.subsec_nanos() % 100_000
-    )
+    format!("1{:013}{:05}", now.as_millis() as u64, now.subsec_nanos() % 100_000)
 }
 
 /// 单次弹幕会话：签名 → 升级 WS → 收帧 → 回 ack → 心跳，直到断开或被取消。
@@ -135,10 +132,7 @@ pub async fn run_ws_session(
     let unsigned = build_ws_url(cfg.room_id, cfg.user_unique_id);
     let md5 = sign::x_ms_stub(&sign::sign_input(&unsigned));
     let started = std::time::Instant::now();
-    let bogus = signer
-        .sign(md5)
-        .await
-        .map_err(|e| WsError::Sign(e.to_string()))?;
+    let bogus = signer.sign(md5).await.map_err(|e| WsError::Sign(e.to_string()))?;
     if bogus.is_empty() {
         return Err(WsError::Sign("签名器返回了空 X-Bogus".into()));
     }
@@ -161,8 +155,7 @@ pub async fn run_ws_session(
         headers.insert("accept-language", HeaderValue::from_static("zh-CN,zh;q=0.9"));
         headers.insert(
             "cookie",
-            HeaderValue::from_str(cfg.cookie)
-                .map_err(|_| WsError::Handshake("cookie 含非法请求头字符".into()))?,
+            HeaderValue::from_str(cfg.cookie).map_err(|_| WsError::Handshake("cookie 含非法请求头字符".into()))?,
         );
     }
     let connected = tokio::time::timeout(

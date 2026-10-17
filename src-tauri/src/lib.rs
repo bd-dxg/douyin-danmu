@@ -64,13 +64,11 @@ pub fn run() {
         // release 是 windows_subsystem = "windows"，没有可用的 stdout，只挂 LogDir；
         // dev 额外挂 Stdout，保留 `pnpm tauri dev` 的终端输出。
         .plugin({
-            let mut targets = vec![tauri_plugin_log::Target::new(
-                tauri_plugin_log::TargetKind::LogDir { file_name: None },
-            )];
+            let mut targets = vec![tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                file_name: None,
+            })];
             if cfg!(debug_assertions) {
-                targets.push(tauri_plugin_log::Target::new(
-                    tauri_plugin_log::TargetKind::Stdout,
-                ));
+                targets.push(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout));
             }
             tauri_plugin_log::Builder::new()
                 .targets(targets)
@@ -120,10 +118,8 @@ pub fn run() {
                 *ov.welcome.lock().unwrap() = cfg.welcome.clone();
             }
             // TTS：恢复朗读配置并启动串行朗读 worker（与弹幕显示完全解耦）
-            app.state::<tts::TtsState>()
-                .set_config(cfg.tts.clone());
-            app.state::<tts::TtsState>()
-                .set_gift_config(cfg.gift_tts.clone());
+            app.state::<tts::TtsState>().set_config(cfg.tts.clone());
+            app.state::<tts::TtsState>().set_gift_config(cfg.gift_tts.clone());
             if cfg.gift_tts.enabled {
                 log::info!("[tts] 已恢复礼物朗读开关，门槛={} 元", cfg.gift_tts.min_amount_yuan);
             }
@@ -152,31 +148,24 @@ pub fn run() {
             }
 
             // Overlay：透明 / 无边框 / 置顶 / 可调整 / 跳过任务栏，恢复上次位置
-            let mut win_builder = WebviewWindowBuilder::new(
-                app,
-                "overlay",
-                WebviewUrl::App("overlay.html".into()),
-            )
-            .title("douyin-danmu overlay")
-            .inner_size(700.0, 400.0)
-            .position(80.0, 80.0)
-            .decorations(false)
-            .transparent(true)
-            .always_on_top(true)
-            .resizable(true)
-            .min_inner_size(120.0, 40.0)
-            .skip_taskbar(true)
-            .shadow(false);
+            let mut win_builder = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
+                .title("douyin-danmu overlay")
+                .inner_size(700.0, 400.0)
+                .position(80.0, 80.0)
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .resizable(true)
+                .min_inner_size(120.0, 40.0)
+                .skip_taskbar(true)
+                .shadow(false);
             if let Some(b) = cfg.overlay_bounds {
                 win_builder = win_builder.position(b.x, b.y).inner_size(b.w, b.h);
             }
             if let Ok(win) = win_builder.build() {
                 let app2 = app.handle().clone();
                 win.on_window_event(move |event| {
-                    if matches!(
-                        event,
-                        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
-                    ) {
+                    if matches!(event, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
                         capture_overlay_bounds(&app2);
                         // 发送框始终吸附：弹幕窗移动/缩放时跟随
                         sync_sender_docked(&app2);
@@ -188,8 +177,7 @@ pub fn run() {
             // 周期落盘窗口位置（拖动/缩放中去重保存）
             let app3 = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let mut interval =
-                    tokio::time::interval(std::time::Duration::from_secs(2));
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
                 loop {
                     interval.tick().await;
                     flush_overlay_bounds(&app3);
@@ -199,19 +187,15 @@ pub fn run() {
             // Sender：底部吸附小窗（穿透开关）始终吸附在弹幕窗下方（无边框 / 置顶 / 跳过任务栏）。
             // 发送弹幕未实现，故窗口里只放「穿透」按钮（见 SENDER_WINDOW_ENABLED 的说明）。
             if SENDER_WINDOW_ENABLED {
-                let sender_builder = WebviewWindowBuilder::new(
-                    app,
-                    "sender",
-                    WebviewUrl::App("sender.html".into()),
-                )
-                .title("douyin-danmu 穿透")
-                .inner_size(96.0, 32.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .resizable(false)
-                .skip_taskbar(true)
-                .shadow(false);
+                let sender_builder = WebviewWindowBuilder::new(app, "sender", WebviewUrl::App("sender.html".into()))
+                    .title("douyin-danmu 穿透")
+                    .inner_size(96.0, 32.0)
+                    .decorations(false)
+                    .transparent(true)
+                    .always_on_top(true)
+                    .resizable(false)
+                    .skip_taskbar(true)
+                    .shadow(false);
                 if sender_builder.build().is_err() {
                     log::error!("[sender] 创建失败");
                 }
@@ -260,8 +244,7 @@ pub fn run() {
                         "quit" => {
                             // 先销毁窗口再退出：destroy 绕过主窗 ×→隐藏 拦截，
                             // 让 WebView2 在进程退出前释放 HWND，避免 1412 unregister 竞态
-                            let wins: Vec<_> =
-                                app.webview_windows().into_values().collect();
+                            let wins: Vec<_> = app.webview_windows().into_values().collect();
                             for w in wins {
                                 let _ = w.destroy();
                             }

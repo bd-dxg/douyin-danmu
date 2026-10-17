@@ -75,10 +75,7 @@ pub(crate) fn strip_bracket_emotes(content: &str) -> (String, bool) {
         while j < chars.len() && chars[j] != ']' && chars[j] != '[' {
             j += 1;
         }
-        let well_formed = j < chars.len()
-            && chars[j] == ']'
-            && j > i + 1
-            && j - i - 1 <= EMOTE_NAME_MAX_CHARS;
+        let well_formed = j < chars.len() && chars[j] == ']' && j > i + 1 && j - i - 1 <= EMOTE_NAME_MAX_CHARS;
         if well_formed {
             had = true;
             i = j + 1;

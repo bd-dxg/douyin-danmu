@@ -71,10 +71,19 @@ mod tests {
 
     #[test]
     fn 拆出开头的提及() {
-        assert_eq!(split("@神秘人六阶 谢谢哥"), Some(("神秘人六阶".into(), "谢谢哥".into())));
+        assert_eq!(
+            split("@神秘人六阶 谢谢哥"),
+            Some(("神秘人六阶".into(), "谢谢哥".into()))
+        );
         // 全角 @、多个空格、不可见字符分隔都认
-        assert_eq!(split("＠神秘人六阶 谢谢哥"), Some(("神秘人六阶".into(), "谢谢哥".into())));
-        assert_eq!(split("@神秘人六阶\t谢谢哥"), Some(("神秘人六阶".into(), "谢谢哥".into())));
+        assert_eq!(
+            split("＠神秘人六阶 谢谢哥"),
+            Some(("神秘人六阶".into(), "谢谢哥".into()))
+        );
+        assert_eq!(
+            split("@神秘人六阶\t谢谢哥"),
+            Some(("神秘人六阶".into(), "谢谢哥".into()))
+        );
         assert_eq!(
             split("@神秘人六阶\u{200E} 谢谢哥"),
             Some(("神秘人六阶".into(), "谢谢哥".into()))
@@ -82,7 +91,10 @@ mod tests {
         // 前面留空白不算事；只 @ 了人不说话时正文为空
         assert_eq!(split("  @神秘人六阶"), Some(("神秘人六阶".into(), String::new())));
         // 正文里的表情照样留给下层剥离
-        assert_eq!(split("@神秘人六阶 [发呆]"), Some(("神秘人六阶".into(), "[发呆]".into())));
+        assert_eq!(
+            split("@神秘人六阶 [发呆]"),
+            Some(("神秘人六阶".into(), "[发呆]".into()))
+        );
     }
 
     #[test]
@@ -97,7 +109,11 @@ mod tests {
     fn 名字取不到或过长时不算提及() {
         assert_eq!(split("@ 谢谢哥"), None);
         assert_eq!(split("@"), None);
-        assert_eq!(split("@谢谢哥"), Some(("谢谢哥".into(), String::new())), "没有分隔符时整段都算名字");
+        assert_eq!(
+            split("@谢谢哥"),
+            Some(("谢谢哥".into(), String::new())),
+            "没有分隔符时整段都算名字"
+        );
         let long = format!("@{} 你好", "字".repeat(40));
         assert_eq!(split(&long), None);
     }

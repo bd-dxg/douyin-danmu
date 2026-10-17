@@ -33,10 +33,10 @@ mod ssml;
 mod util;
 mod voices;
 
-pub use voices::{builtin_voices, fetch_voices};
 use drm::{adjust_clock_skew, sec_ms_gec};
 use ssml::build_ssml;
 use util::{date_string, random_hex};
+pub use voices::{builtin_voices, fetch_voices};
 
 /// Edge 服务端校验必需的公共请求头（WS 与 voices/list 共用）
 fn edge_headers() -> Vec<(&'static str, String)> {
@@ -108,8 +108,8 @@ async fn connect_once() -> Result<(Ws, std::net::SocketAddr), ConnectError> {
         }
     }
     let (tcp, peer) = dial_tcp().await.map_err(ConnectError::Other)?;
-    let connector = native_tls::TlsConnector::new()
-        .map_err(|e| ConnectError::Other(format!("初始化 TLS 失败: {e}")))?;
+    let connector =
+        native_tls::TlsConnector::new().map_err(|e| ConnectError::Other(format!("初始化 TLS 失败: {e}")))?;
     let handshake = tokio_tungstenite::client_async_tls_with_config(
         req,
         tcp,
@@ -120,9 +120,7 @@ async fn connect_once() -> Result<(Ws, std::net::SocketAddr), ConnectError> {
     match handshake {
         Ok((ws, _)) => Ok((ws, peer)),
         // 403 时把响应头里的 `Date` 带回去，供上层校准时钟偏差
-        Err(tokio_tungstenite::tungstenite::Error::Http(resp))
-            if resp.status() == 403 =>
-        {
+        Err(tokio_tungstenite::tungstenite::Error::Http(resp)) if resp.status() == 403 => {
             let date = resp
                 .headers()
                 .get("date")
@@ -146,8 +144,7 @@ impl ConnectError {
     fn into_message(self) -> String {
         match self {
             Self::Forbidden(_) => {
-                "Edge TTS 握手被 403 拒绝（本机时钟偏差超过 5 分钟时令牌算错；也可能是本机 IP 被限流）"
-                    .to_string()
+                "Edge TTS 握手被 403 拒绝（本机时钟偏差超过 5 分钟时令牌算错；也可能是本机 IP 被限流）".to_string()
             }
             Self::Other(msg) => msg,
         }
@@ -199,13 +196,7 @@ fn ssml_frame(now: &str, ssml: &str) -> String {
 }
 
 /// 在一条连接上合成一轮（发送 speech.config + ssml 并收流）
-async fn synth_turn(
-    ws: &mut Ws,
-    voice: &str,
-    rate_pct: i32,
-    volume_pct: i32,
-    text: &str,
-) -> Result<Vec<u8>, String> {
+async fn synth_turn(ws: &mut Ws, voice: &str, rate_pct: i32, volume_pct: i32, text: &str) -> Result<Vec<u8>, String> {
     let now = date_string();
     ws.send(Message::Text(speech_config_frame(&now).into()))
         .await
@@ -266,12 +257,7 @@ async fn recv_turn(ws: &mut Ws) -> Result<Vec<u8>, String> {
 /// 合成一段文本为 MP3 字节（每条新建连接）；失败返回可读原因（调用方只记录，不重试，避免刷屏）
 ///
 /// `rate_pct` / `volume_pct` 为相对基准的百分比偏移（如 -20 表示 -20%）。
-pub async fn synthesize(
-    voice: &str,
-    rate_pct: i32,
-    volume_pct: i32,
-    text: &str,
-) -> Result<Vec<u8>, String> {
+pub async fn synthesize(voice: &str, rate_pct: i32, volume_pct: i32, text: &str) -> Result<Vec<u8>, String> {
     let (mut ws, peer) = connect().await?;
     synth_turn(&mut ws, voice, rate_pct, volume_pct, text)
         .await
@@ -287,10 +273,7 @@ mod tests {
     /// 以版本串为真源反推主版本号、再回查 UA
     #[test]
     fn chromium_version_is_consistent() {
-        assert!(
-            SEC_MS_GEC_VERSION.starts_with("2-"),
-            "v2 令牌必须配 2- 前缀"
-        );
+        assert!(SEC_MS_GEC_VERSION.starts_with("2-"), "v2 令牌必须配 2- 前缀");
         let full = SEC_MS_GEC_VERSION.trim_start_matches("2-");
         let major = full.split('.').next().expect("版本串应含主版本号");
         assert!(USER_AGENT.contains(&format!("Chrome/{major}.0.0.0")));
@@ -345,8 +328,8 @@ mod tests {
     #[test]
     #[ignore]
     fn edge_synthesizes_mp3_live() {
-        let mp3 = tauri::async_runtime::block_on(synthesize("zh-CN-XiaoxiaoNeural", 0, 0, "测试"))
-            .expect("联网合成失败");
+        let mp3 =
+            tauri::async_runtime::block_on(synthesize("zh-CN-XiaoxiaoNeural", 0, 0, "测试")).expect("联网合成失败");
         // MP3 帧同步头：11 位全 1
         assert!(mp3.len() > 1000, "音频太短: {} 字节", mp3.len());
         assert_eq!(mp3[0], 0xFF);

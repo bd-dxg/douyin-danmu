@@ -101,9 +101,7 @@ pub fn x_ms_stub(input: &str) -> String {
 pub fn encode_component(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for &b in s.as_bytes() {
-        if b.is_ascii_alphanumeric()
-            || matches!(b, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')
-        {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')') {
             out.push(b as char);
         } else {
             out.push_str(&format!("%{b:02X}"));
@@ -138,9 +136,12 @@ mod tests {
 
     #[test]
     fn 没有_query_时参数全为空串() {
-        assert_eq!(sign_input("wss://x/y"), "live_id=,aid=,version_code=,webcast_sdk_version=,\
+        assert_eq!(
+            sign_input("wss://x/y"),
+            "live_id=,aid=,version_code=,webcast_sdk_version=,\
              room_id=,sub_room_id=,sub_channel_id=,did_rule=,user_unique_id=,device_platform=,\
-             device_type=,ac=,identity=");
+             device_type=,ac=,identity="
+        );
     }
 
     #[test]

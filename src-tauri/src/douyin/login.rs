@@ -43,9 +43,7 @@ pub fn login_webview_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// 建登录窗口（宽度不能小：抖音页面是响应式的，窄到 ~600px 以下顶部栏会折叠、
 /// 「登录」入口直接不渲染 —— 实测 520 宽的窗口里根本找不到登录按钮）
 pub fn create_login_window(app: &AppHandle) -> Result<WebviewWindow, String> {
-    let url: Url = LOGIN_URL
-        .parse()
-        .map_err(|e| format!("登录页地址无效：{e}"))?;
+    let url: Url = LOGIN_URL.parse().map_err(|e| format!("登录页地址无效：{e}"))?;
     let dir = login_webview_dir(app)?;
     WebviewWindowBuilder::new(app, LOGIN_WINDOW_LABEL, WebviewUrl::External(url))
         .title("抖音扫码登录 · 点右上角「登录」就能扫码（成功后本窗口自动关）")
@@ -94,9 +92,7 @@ pub async fn wait_for_login(app: &AppHandle, win: &WebviewWindow) -> Result<Stri
 
 /// 读抖音域下的 cookie 串；还没登录（没有 `sessionid`）时返回 None
 fn read_douyin_cookie(win: &WebviewWindow) -> Result<Option<String>, String> {
-    let cookies = win
-        .cookies()
-        .map_err(|e| format!("读取登录 Cookie 失败：{e}"))?;
+    let cookies = win.cookies().map_err(|e| format!("读取登录 Cookie 失败：{e}"))?;
     if !cookies
         .iter()
         .any(|c| c.name() == SESSION_COOKIE && !c.value().is_empty())

@@ -20,11 +20,7 @@ use tokio_util::sync::CancellationToken;
 
 /// 连接直播间（参数是直播间**短号**，不是 19 位 room_id）
 #[tauri::command]
-pub(crate) async fn connect_room(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    web_rid: String,
-) -> Result<(), String> {
+pub(crate) async fn connect_room(app: AppHandle, state: State<'_, AppState>, web_rid: String) -> Result<(), String> {
     let web_rid = web_rid.trim().to_owned();
     if web_rid.is_empty() || !web_rid.chars().all(|c| c.is_ascii_digit()) {
         return Err("直播间号应为纯数字（浏览器地址 live.douyin.com/ 后面那串）".into());
@@ -38,10 +34,7 @@ pub(crate) async fn connect_room(
             web_rid: web_rid.clone(),
         };
     }
-    let _ = app.emit(
-        "room-status",
-        json!({ "state": "connecting", "webRid": web_rid }),
-    );
+    let _ = app.emit("room-status", json!({ "state": "connecting", "webRid": web_rid }));
 
     let cancel = CancellationToken::new();
     *state.cancel.lock().unwrap() = Some(cancel.clone());
@@ -94,10 +87,9 @@ impl SessionHandler for RoomHandler {
     fn on_connected(&self) {
         crate::state::on_room_connected(&self.app, self.web_rid.clone());
         log::info!("[douyin] 房间 {} 弹幕会话已建立", self.web_rid);
-        let _ = self.app.emit(
-            "room-status",
-            json!({ "state": "connected", "webRid": self.web_rid }),
-        );
+        let _ = self
+            .app
+            .emit("room-status", json!({ "state": "connected", "webRid": self.web_rid }));
     }
 
     fn on_event(&self, event: DouyinEvent) {

@@ -77,14 +77,9 @@ mod dpapi {
             )
         };
         if ok == 0 {
-            return Err(format!(
-                "CryptProtectData 失败: {}",
-                std::io::Error::last_os_error()
-            ));
+            return Err(format!("CryptProtectData 失败: {}", std::io::Error::last_os_error()));
         }
-        let out = unsafe {
-            std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec()
-        };
+        let out = unsafe { std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec() };
         unsafe { LocalFree(out_blob.pbData as _) };
         Ok(out)
     }
@@ -108,14 +103,9 @@ mod dpapi {
             )
         };
         if ok == 0 {
-            return Err(format!(
-                "CryptUnprotectData 失败: {}",
-                std::io::Error::last_os_error()
-            ));
+            return Err(format!("CryptUnprotectData 失败: {}", std::io::Error::last_os_error()));
         }
-        let out = unsafe {
-            std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec()
-        };
+        let out = unsafe { std::slice::from_raw_parts(out_blob.pbData, out_blob.cbData as usize).to_vec() };
         unsafe { LocalFree(out_blob.pbData as _) };
         Ok(out)
     }

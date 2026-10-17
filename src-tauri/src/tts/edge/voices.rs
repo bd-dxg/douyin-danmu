@@ -87,11 +87,7 @@ pub async fn fetch_voices() -> Result<Vec<(String, String)>, String> {
     if voices.is_empty() {
         return Err("微软返回的音色列表里没有中文音色".into());
     }
-    voices.sort_by(|a, b| {
-        voice_group(&a.0)
-            .cmp(&voice_group(&b.0))
-            .then_with(|| a.0.cmp(&b.0))
-    });
+    voices.sort_by(|a, b| voice_group(&a.0).cmp(&voice_group(&b.0)).then_with(|| a.0.cmp(&b.0)));
     voices.dedup_by(|a, b| a.0 == b.0);
     Ok(voices)
 }
@@ -142,10 +138,7 @@ mod tests {
 
     #[test]
     fn voice_label_prefers_builtin_chinese_name() {
-        assert_eq!(
-            label_for("zh-CN-XiaoxiaoNeural", "Female", "zh-CN"),
-            "晓晓·女声"
-        );
+        assert_eq!(label_for("zh-CN-XiaoxiaoNeural", "Female", "zh-CN"), "晓晓·女声");
         // 内置表里没有的音色退回「性别·语言」
         assert_eq!(label_for("zh-CN-NewVoiceNeural", "Female", "zh-CN"), "女声·zh-CN");
         assert_eq!(label_for("zh-CN-NewVoiceNeural", "Male", "zh-CN"), "男声·zh-CN");

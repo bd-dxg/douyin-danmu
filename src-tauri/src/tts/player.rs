@@ -23,11 +23,7 @@ const POLL_MAX: u32 = 600;
 /// 「被打断」不掐正在念的这条：音频是整条合成的，掐断只能听到半句（开了念用户名时
 /// 甚至连正文都没开始）。积压交给队列丢最旧 + `expired` 作废在途音频，
 /// 延迟上限仍是一条朗读时长。
-pub fn play_mp3(
-    data: &[u8],
-    expired: impl Fn() -> bool,
-    stop_now: impl Fn() -> bool,
-) -> Result<(), String> {
+pub fn play_mp3(data: &[u8], expired: impl Fn() -> bool, stop_now: impl Fn() -> bool) -> Result<(), String> {
     // 从合成完毕到轮到播放之间可能已被顶掉（关了朗读 / 来了更新的弹幕）：连临时文件都不必落盘
     if expired() {
         return Ok(());
@@ -38,10 +34,7 @@ pub fn play_mp3(
     // 上一轮异常退出可能残留句柄，先关掉再打开
     let _ = send(&format!("close {ALIAS}"));
     let result = (|| {
-        send(&format!(
-            "open \"{}\" type mpegvideo alias {ALIAS}",
-            path.display()
-        ))?;
+        send(&format!("open \"{}\" type mpegvideo alias {ALIAS}", path.display()))?;
         send(&format!("play {ALIAS}"))?;
         for _ in 0..POLL_MAX {
             std::thread::sleep(POLL_INTERVAL);
@@ -67,14 +60,7 @@ fn send(command: &str) -> Result<String, String> {
         .chain(std::iter::once(0))
         .collect();
     let mut buf = [0u16; 256];
-    let rc = unsafe {
-        mciSendStringW(
-            wide.as_ptr(),
-            buf.as_mut_ptr(),
-            buf.len() as u32,
-            std::ptr::null_mut(),
-        )
-    };
+    let rc = unsafe { mciSendStringW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32, std::ptr::null_mut()) };
     if rc != 0 {
         return Err(format!("MCI 失败({rc}): {}", error_text(rc)));
     }

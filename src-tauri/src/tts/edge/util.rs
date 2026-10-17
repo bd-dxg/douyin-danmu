@@ -76,13 +76,7 @@ pub fn random_hex(bytes: usize, upper: bool) -> String {
 fn hex(bytes: &[u8], upper: bool) -> String {
     bytes
         .iter()
-        .map(|b| {
-            if upper {
-                format!("{b:02X}")
-            } else {
-                format!("{b:02x}")
-            }
-        })
+        .map(|b| if upper { format!("{b:02X}") } else { format!("{b:02x}") })
         .collect()
 }
 

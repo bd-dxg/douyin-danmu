@@ -28,11 +28,9 @@ pub fn run_login_helper() {
         // helper 写自己的日志文件：两个进程往同一个文件写会互相截断
         .plugin(
             tauri_plugin_log::Builder::new()
-                .targets([tauri_plugin_log::Target::new(
-                    tauri_plugin_log::TargetKind::LogDir {
-                        file_name: Some("douyin-danmu-login".into()),
-                    },
-                )])
+                .targets([tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                    file_name: Some("douyin-danmu-login".into()),
+                })])
                 .level(log::LevelFilter::Info)
                 .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                 .build(),

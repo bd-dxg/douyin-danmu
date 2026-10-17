@@ -14,7 +14,8 @@
 
 use reqwest::Client;
 
-const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+const UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 /// 解析结果
 #[derive(Debug, Clone)]
@@ -57,7 +58,11 @@ impl std::fmt::Display for ResolveError {
 /// 实测把带登录态的整串 cookie 直接替换掉 ttwid 会让 WS 握手返回
 /// `200 + handshake-msg: http: named cookie not present`。
 /// 登录态只跟着返回值（交给 WS 用），**不进 enter 请求**，原因见模块头注释。
-pub async fn resolve(client: &Client, web_rid: &str, login_cookie: Option<&str>) -> Result<DouyinRoomInfo, ResolveError> {
+pub async fn resolve(
+    client: &Client,
+    web_rid: &str,
+    login_cookie: Option<&str>,
+) -> Result<DouyinRoomInfo, ResolveError> {
     let home = format!("https://live.douyin.com/{web_rid}");
     let resp = client
         .get(&home)
@@ -199,7 +204,8 @@ mod tests {
 
     #[test]
     fn 能从_enter_响应里捞出房间号() {
-        let json = r#"{"data":{"data":[{"id_str":"7686161414943623974","title":"x"}],"user":{"id_str":"94151964326"}}}"#;
+        let json =
+            r#"{"data":{"data":[{"id_str":"7686161414943623974","title":"x"}],"user":{"id_str":"94151964326"}}}"#;
         // 第一个命中就是房间的（15~25 位），用户 id 是 11 位会被跳过
         assert_eq!(find_id_str(json).unwrap(), "7686161414943623974");
     }
@@ -212,7 +218,8 @@ mod tests {
         assert_eq!(parse_uname(json).as_deref(), Some("若水🎙️（经典老歌）"));
         assert!(!parse_live(json), "status=4 是已结束");
 
-        let live_json = r#"{"data":{"data":[{"id_str":"7686161414943623974","status":2}],"user":{"nickname":"某主播"}}}"#;
+        let live_json =
+            r#"{"data":{"data":[{"id_str":"7686161414943623974","status":2}],"user":{"nickname":"某主播"}}}"#;
         assert!(parse_live(live_json), "status=2 是直播中");
     }
 
@@ -248,7 +255,10 @@ mod tests {
         // 登录态里没有 ttwid → 追加
         assert_eq!(merge_cookie(Some("sessionid=abc"), "T1"), "sessionid=abc; ttwid=T1");
         // 登录态里已有 ttwid → 不覆盖（用用户自己的）
-        assert_eq!(merge_cookie(Some("sessionid=abc; ttwid=U1"), "T1"), "sessionid=abc; ttwid=U1");
+        assert_eq!(
+            merge_cookie(Some("sessionid=abc; ttwid=U1"), "T1"),
+            "sessionid=abc; ttwid=U1"
+        );
         // 无登录态 → 只有 ttwid
         assert_eq!(merge_cookie(None, "T1"), "ttwid=T1");
         assert_eq!(merge_cookie(Some("  "), "T1"), "ttwid=T1");
