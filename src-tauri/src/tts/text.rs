@@ -5,6 +5,7 @@
 
 use crate::douyin::emote::strip_bracket_emotes;
 use crate::douyin::event::{Backing, Danmaku};
+use crate::douyin::mention::split_mention;
 use crate::config::{DanmakuFilter, TtsConfig};
 
 /// 同一字符连续重复的最大保留次数（「哈哈哈哈哈哈哈」只读三个）
@@ -52,7 +53,13 @@ pub(super) fn build_text(d: &Danmaku, config: &TtsConfig) -> String {
         (false, true) => return String::new(),
         (false, false) => strip_bracket_emotes(&d.content).0,
     };
-    let mut content = clean_for_speech(&content_src);
+    // @提及（「@神秘人六阶 谢谢哥」）：念成「发送者对被提及者说 正文」。
+    // **不看** `read_username`：这类弹幕缺了两边的名字就丢了「对谁说」这层意思。
+    let (mention, body) = match split_mention(&content_src) {
+        Some((target, rest)) => (Some(target), rest),
+        None => (None, content_src),
+    };
+    let mut content = clean_for_speech(&body);
     if !has_readable_content(&content) {
         return String::new();
     }
@@ -62,7 +69,12 @@ pub(super) fn build_text(d: &Danmaku, config: &TtsConfig) -> String {
     }
 
     let mut out = String::new();
-    if config.read_username {
+    if let Some(target) = mention {
+        out.push_str(&spoken_name(&d.username));
+        out.push_str("对");
+        out.push_str(&spoken_name(&target));
+        out.push_str("说 ");
+    } else if config.read_username {
         // 用户名同正文一样要剔噪声字符：昵称里的 `_` 同样会被念成「下划线」
         let name = strip_noise(&d.username);
         let name = name.trim();
@@ -292,6 +304,45 @@ mod tests {
         // 一律按表情剥掉；这条单测把代价写死，改了剥离规则它会先炸
         let config = TtsConfig::default();
         assert_eq!(build_text(&danmaku("价格[10]元"), &config), "价格元");
+    }
+
+    #[test]
+    fn 提及弹幕念成对谁说() {
+        // 正文开头的 `@名字`（抖音没有独立的回复消息类型，见 douyin::mention）
+        let config = TtsConfig {
+            read_username: true,
+            ..TtsConfig::default()
+        };
+        assert_eq!(
+            build_text(&danmaku("@神秘人六阶 谢谢哥"), &config),
+            "小明对神秘人六阶说 谢谢哥"
+        );
+        // 「朗读用户名」关着也照念两边的名字：这类弹幕缺了名字就丢了「对谁说」
+        assert_eq!(
+            build_text(&danmaku("@神秘人六阶 谢谢哥"), &TtsConfig::default()),
+            "小明对神秘人六阶说 谢谢哥"
+        );
+        // 名字里的 `_` 同用户名一样要剔噪声
+        assert_eq!(
+            build_text(&danmaku("@神秘人__六阶 谢谢"), &TtsConfig::default()),
+            "小明对神秘人六阶说 谢谢"
+        );
+    }
+
+    #[test]
+    fn 只提及没说话的不念() {
+        // 「@某人」后面没有正文：念「小明对某人说」是句半截话，整条跳过
+        assert_eq!(build_text(&danmaku("@神秘人六阶"), &TtsConfig::default()), "");
+    }
+
+    #[test]
+    fn 正文中间的_at_不算提及() {
+        // 手打的 @（不在正文开头）按普通弹幕照念，不改写句式；
+        // 注意 `@` 本身是会被引擎念成「at」的噪声字符，清洗时始终剔掉
+        assert_eq!(
+            build_text(&danmaku("谢谢@某人 的礼物"), &TtsConfig::default()),
+            "谢谢某人 的礼物"
+        );
     }
 
     #[test]

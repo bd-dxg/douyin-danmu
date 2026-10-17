@@ -16,6 +16,7 @@ pub use worker::spawn_worker;
 
 use crate::config::{GiftTtsConfig, TtsConfig};
 use crate::douyin::event::{Backing, Danmaku};
+use crate::douyin::mention::split_mention;
 use crate::state::OverlayState;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -200,6 +201,10 @@ pub fn on_danmaku(app: &AppHandle, d: &Danmaku) {
             config.read_emote,
             if text.is_empty() { "不" } else { "" }
         );
+    }
+    // 提及弹幕靠正文形态认（见 `douyin::mention`），认错或没认出来时看这条
+    if split_mention(&d.content).is_some() {
+        log::debug!("[mention] 提及弹幕「{}」→ 朗读「{text}」", d.content);
     }
     drop(config);
     if text.is_empty() {
