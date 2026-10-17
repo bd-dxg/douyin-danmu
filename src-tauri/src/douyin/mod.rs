@@ -12,6 +12,7 @@ pub mod event;
 pub mod live;
 pub mod login;
 pub mod login_helper;
+pub mod mention;
 pub mod parser;
 pub mod proto;
 pub mod resolver;
