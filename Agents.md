@@ -42,9 +42,9 @@
 
 ### 目录
 
-- `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（弹幕窗下方的**穿透小控件**；发送弹幕未实现，无输入框）、`styles/settings.css`、`types/ipc.ts``
+- `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`（`FollowingLiveRooms.vue` 关注在播）、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（弹幕窗下方的**穿透小控件**；发送弹幕未实现，无输入框）、`styles/settings.css`、`types/ipc.ts``
 - `src-tauri/src/`：`lib.rs`（组装）、`state.rs`、`commands.rs`、`connection.rs`（会话循环 + 重连）、`window.rs`（窗口与穿透小控件吸附）、`gift.rs`（礼物列表：门槛 + 合并）、`welcome.rs`（欢迎信息：去重限速）、`tts/`（队列 `mod.rs`、文案 `text.rs`、礼物聚合 `gift.rs`、流水线 `worker.rs`、播放 `player.rs`、协议 `edge.rs`）、`config/`（读写 + 结构体 + DPAPI）、`update.rs`
-- `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（登录页：建窗 / 读 Cookie / 等扫码）、`login_helper.rs`（登录子进程入口）、`event.rs`（事件模型）
+- `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`emote.rs`（表情弹幕解析）、`live.rs`（关注在播的数据源）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（登录页：建窗 / 读 Cookie / 等扫码）、`login_helper.rs`（登录子进程入口）、`event.rs`（事件模型）
 - 多窗口：`index.html`（主窗）+ `overlay.html` + `sign.html`（隐藏签名页）+ 登录子进程自建的登录窗（label `login`）；`sender.html` 是弹幕窗下方的**穿透小控件**（`lib.rs` 的 `SENDER_WINDOW_ENABLED = true`）—— 发送弹幕不做（见上表），窗口里只放一个穿透开关；穿透开启后弹幕窗收不到鼠标事件，必须靠这个独立窗口才能关回来。Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
 - **主窗不在 `tauri.conf.json` 里定义**（`app.windows` 是空的，改在 `lib.rs` 的 setup 里建）：那个数组是整个 exe 共用的，helper 模式下也会被自动建出来，而 helper 的 WebView2 必须用独立 user data folder，自动建的窗口设不了 `data_directory`
 
@@ -75,6 +75,7 @@
 10. **登录页跑在独立子进程**（`douyin-danmu.exe --login-helper`）：抖音首页自动播放视频流会把 WebView2 的 GPU 进程顶到 1 GB 上下（`login.rs` 里已用 `--autoplay-policy` 关掉），窗口销毁后还有约 84 MB 残留。分流必须在 `lib.rs` 注册单实例插件**之前**，否则子进程会被主实例当成「第二个实例」顶掉
 11. **helper 的 WebView2 必须用独立 user data folder**（`login-webview`）：WebView2 不允许两个环境（两个进程）指向同一个目录。给窗口设 `data_directory` 是 `WebviewWindowBuilder` 的能力，这也是 `tauri.conf.json` 的 `app.windows` 必须清空的原因
 12. **`additional_browser_args` 会整串替换 wry 的默认参数**：默认是 `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`，自己传参时必须把它带上
+13. **关注在播走 `POST https://www.douyin.com/webcast/feed/follow_top/`，不需要签名**：query 只要 `device_platform=webapp&aid=6383&channel=channel_pc_web`，body 只要 `source_key=web_homepage_follow_top&follow_session_id=<游标>`（页面真实请求里的 `a_bogus` / `msToken` / `uifid` / `x-secsdk-csrf-token` 全可省）。少了 body 里的 `source_key` 就回 `10011 Request params error`，**别往签名上排查**。返回里 `data[].owner.nickname` 是主播名、`web_rid` 是**直播间短号**（不是抖音号）、`data.id_str` 是真实 room_id，翻页看 `extra.follow_session_id` / `extra.has_more`
 
 ## 身份徽章（等级 / 灯牌）的字段口径
 
@@ -99,6 +100,7 @@
 - 单条合成有两层超时（`worker.rs` 的 `SYNTH_TIMEOUT` 与 `edge.rs` 的 `RECV_TIMEOUT`），别只留一个
 - 礼物朗读自己按「用户 + 礼物」聚合一遍（不复用 `gift.rs` 的分组表），静默满一个连击窗口才念一次，插队用 `push_front`；队列丢弃只丢**弹幕**（`force` 项保留）
 - 欢迎信息**不朗读**（抖音没有舰队档位，念出来没有信息量）
+- 表情弹幕（`WebcastEmojiChatMessage`）是**独立消息类型**：弹幕窗渲染成「[表情名]」，朗读默认整条不念（`TtsConfig.read_emote`，设置页在「朗读筛选」页签）；表情名取不到时 `parser` 打一条 warn、带出 payload 字段号，**别改成静默丢弃**（抖音改字段号时全靠这条排查）
 
 ## 礼物 / 欢迎信息
 

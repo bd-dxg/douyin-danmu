@@ -300,6 +300,7 @@ pub fn run() {
             commands::logout,
             commands::douyin_login_open,
             commands::send_danmaku,
+            commands::list_following_live,
             commands::overlay_set_visible,
             commands::overlay_set_clickthrough,
             commands::overlay_get_clickthrough,

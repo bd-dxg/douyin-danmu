@@ -302,6 +302,22 @@ pub(crate) fn send_danmaku(_msg: String) -> Result<(), String> {
     Err("抖音发送弹幕暂未支持".into())
 }
 
+/// 查询「已关注且正在开播」的主播（主界面手动刷新；只需登录态，与当前是否已连接房间无关）
+#[tauri::command]
+pub(crate) async fn list_following_live(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::douyin::live::FollowingLive>, String> {
+    // 关注列表接口未登录返回 20003；锁作用域内克隆，避免持锁 await
+    let cookies = {
+        let auth = state.auth.lock().unwrap();
+        match auth.as_ref() {
+            Some(a) if !a.cookies.trim().is_empty() => a.cookies.clone(),
+            _ => return Err("请先扫码登录后查看关注在播".into()),
+        }
+    };
+    crate::douyin::live::list_following_live(&crate::douyin::live::http_client(), &cookies).await
+}
+
 /// 查询最近连接的直播间（主界面面包屑，已按最近在前排序）
 #[tauri::command]
 pub(crate) fn get_recent_rooms(app: AppHandle) -> Vec<config::RecentRoom> {

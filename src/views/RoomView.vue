@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
+import FollowingLiveRooms from '../components/FollowingLiveRooms.vue'
 import StatusDashboard from '../components/StatusDashboard.vue'
 import { refreshLogin, startLogin, useLogin } from '../composables/useLogin'
 import { useRoomConnection } from '../composables/useRoomConnection'
@@ -9,6 +10,9 @@ onMounted(refreshLogin)
 
 const { loggedIn, logout } = useLogin()
 const { roomId, busy, status, errorMsg, recentRooms, locked, statusText, connect, disconnect } = useRoomConnection()
+
+// 最近连接的直播间面包屑：暂时隐藏（只隐藏 UI，数据与代码保留，改 true 即恢复）
+const SHOW_RECENT_ROOMS = false
 
 const loggingIn = ref(false)
 const loginError = ref('')
@@ -74,7 +78,7 @@ function onRoomInput(e: Event) {
       </button>
     </div>
 
-    <div v-if="recentRooms.length" class="recent-bar">
+    <div v-if="SHOW_RECENT_ROOMS && recentRooms.length" class="recent-bar">
       <span class="recent-label">最近</span>
       <button
         v-for="r in recentRooms"
@@ -86,6 +90,9 @@ function onRoomInput(e: Event) {
         {{ r.uname || r.room_id }}
       </button>
     </div>
+
+    <!-- 关注在播：登录态成立时自动查一次，之后手动「刷新」；点名字直连（emit 给这里调 connect） -->
+    <FollowingLiveRooms :disabled="busy || locked" @connect="connect" />
 
     <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
 

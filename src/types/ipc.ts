@@ -20,6 +20,18 @@ export interface DanmakuEvent {
   level?: number
   /** 粉丝团（灯牌）等级：只有已加入本直播间粉丝团的观众才有 */
   fansclub_level?: number
+  /** 表情弹幕（有值时 content 就是表情名，渲染成「[名字]」；普通弹幕不下发） */
+  emote?: DanmakuEmote
+}
+
+/**
+ * 弹幕表情包（抖音把表情弹幕做成独立的消息类型 WebcastEmojiChatMessage）
+ *
+ * 只有表情弹幕才下发；此时 `content` 就是表情名（如「微笑」）。
+ */
+export interface DanmakuEmote {
+  /** 表情 id（EmojiChatMessage.f3）：同一表情在不同直播间 id 不变，排障时对齐日志用 */
+  emoji_id: number
 }
 
 /** Overlay 弹幕行数据：弹幕事件 + 展示所需的派生标记 */
@@ -159,6 +171,18 @@ export interface RecentRoom {
   uname?: string | null
 }
 
+/** 已关注且正在开播的主播（主界面「关注在播」手动刷新） */
+export interface FollowingLive {
+  /** 主播 uid */
+  uid: number
+  /** 主播昵称（取自关注列表） */
+  uname: string
+  /** 直播间短号（接口返回的 web_rid）：点击直连时交给 connect_room */
+  web_rid: string
+  /** 真实 room_id（19 位，仅用于标明是哪个房间） */
+  room_id: string
+}
+
 /** 弹幕过滤配置（Rust ↔ Vue，事件名 danmaku-filter） */
 export interface DanmakuFilter {
   /** 只显示抖音等级 ≥ level_min 的弹幕 */
@@ -197,6 +221,8 @@ export interface TtsConfig {
   volume_pct: number
   /** 是否在正文前念用户名 */
   read_username: boolean
+  /** 是否朗读表情弹幕（默认关：表情弹幕整条不念，正文即表情名） */
+  read_emote: boolean
   /** 弹幕正文最大朗读字数（不含用户名，0 = 不限制） */
   max_len: number
   /** 待朗读队列上限（超出丢弃最旧的） */
@@ -233,6 +259,7 @@ export const DEFAULT_TTS_CONFIG: TtsConfig = {
   rate_pct: 0,
   volume_pct: 0,
   read_username: false,
+  read_emote: false,
   // 15 字 ≈ 3.4s 音频；全念完在高频房间会明显积压
   max_len: 15,
   max_queue: 5,

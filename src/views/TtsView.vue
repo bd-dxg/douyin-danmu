@@ -121,6 +121,12 @@ function applyFilter(next: DanmakuFilter) {
 
     <section v-show="tab === 'filter'" class="tab-pane">
       <p class="tip">这里的规则只影响朗读，与「弹幕 → 弹幕过滤」的显示筛选各自独立。</p>
+      <div class="setting-card">
+        <SettingRow label="朗读表情弹幕">
+          <input v-model="config.read_emote" type="checkbox" class="switch" @change="save()" />
+        </SettingRow>
+        <p class="tip">默认关：表情弹幕整条不念（它的正文就是表情名，如「微笑」）。打开后按普通弹幕照念。</p>
+      </div>
       <DanmakuFilterPanel :model-value="config.filter" verb="朗读" @change="applyFilter" />
     </section>
   </div>

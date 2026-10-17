@@ -30,6 +30,20 @@ const props = defineProps<{
 const contentColor = computed(() =>
   props.d.isWelcome ? shiftHue(props.overlayStyle.username_color, WELCOME_HUE_SHIFT) : props.overlayStyle.content_color,
 )
+
+/**
+ * 正文：表情弹幕的正文就是表情名（「微笑」），显示时补上中括号
+ *
+ * 中括号与老式小表情「[笑哭]」写法一致，一眼能看出是表情而不是普通文字；
+ * 名字本身已带中括号时不重复包裹。
+ */
+const displayContent = computed(() => {
+  const text = props.d.content
+  if (!props.d.emote) {
+    return text
+  }
+  return text.startsWith('[') && text.endsWith(']') ? text : `[${text}]`
+})
 </script>
 
 <template>
@@ -53,7 +67,7 @@ const contentColor = computed(() =>
           color: contentColor,
           fontWeight: overlayStyle.bold ? 700 : 400,
         }">
-        {{ d.content }}
+        {{ displayContent }}
       </span>
     </span>
   </div>

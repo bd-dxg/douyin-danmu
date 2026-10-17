@@ -2,6 +2,7 @@
 //!
 //! 字段号见 `probe/reference/douyin.proto` 与 `probe/README.md`（均为实测）。
 
+use super::emote::parse_emote;
 use super::event::{Backing, BackingKind, Danmaku, DouyinEvent, Welcome, WelcomeKind};
 use super::proto::{self, read_fields, Field};
 
@@ -141,6 +142,7 @@ pub fn parse(method: &str, payload: &[u8]) -> Option<DouyinEvent> {
     let ts = now_secs();
     match method {
         "WebcastChatMessage" => parse_chat(payload, ts).map(DouyinEvent::Danmaku),
+        "WebcastEmojiChatMessage" => parse_emoji_chat(payload, ts).map(DouyinEvent::Danmaku),
         "WebcastGiftMessage" => parse_gift(payload, ts).map(DouyinEvent::Backing),
         "WebcastMemberMessage" => parse_member(payload, ts).map(DouyinEvent::Welcome),
         "WebcastSocialMessage" => parse_social(payload, ts).map(DouyinEvent::Welcome),
@@ -166,6 +168,41 @@ fn parse_chat(payload: &[u8], fallback_ts: i64) -> Option<Danmaku> {
         timestamp: c.ts,
         level: u.level,
         fansclub_level: u.fansclub_level,
+        emote: None,
+    })
+}
+
+/// `EmojiChatMessage`：f1=Common, f2=User, f3=emojiId, f4=emojiContent, f5=defaultContent
+///
+/// 抖音的表情弹幕是独立消息类型（不是 `ChatMessage` 上的字段），正文即表情名。
+fn parse_emoji_chat(payload: &[u8], fallback_ts: i64) -> Option<Danmaku> {
+    let f = read_fields(payload).ok()?;
+    let c = common(&f, fallback_ts);
+    let u = user(proto::message(&f, 2)?)?;
+    let Some(emote) = parse_emote(&f) else {
+        // 表情名取不到时留一条 warn（默认日志级别 Info 就能落盘）：若抖音改了字段号，
+        // 靠这条能直接看出收到了哪些字段，不必再改代码重新抓
+        log::warn!(
+            "[emote] 收到表情弹幕但没解出名字，payload 字段={}",
+            f.iter().map(|x| x.num.to_string()).collect::<Vec<_>>().join(",")
+        );
+        return None;
+    };
+    // 逐条表情的识别日志走 debug：日志级别是 Info，平时不落盘、不刷屏；
+    // 排查「表情弹幕没显示 / 还在被念」时把 `lib.rs` 的 level 临时改成 Debug 即可看到
+    log::debug!(
+        "[emote] 识别表情弹幕「{}」emojiId={}",
+        emote.name,
+        emote.emote.emoji_id
+    );
+    Some(Danmaku {
+        id: event_id(c.msg_id, c.ts, u.uid),
+        username: u.nick,
+        content: emote.name,
+        timestamp: c.ts,
+        level: u.level,
+        fansclub_level: u.fansclub_level,
+        emote: Some(emote.emote),
     })
 }
 
@@ -442,6 +479,43 @@ mod tests {
         let payload = [nested(1, &common_body(1, 0)), nested(2, &user_body(1, "A", None)), s(3, "   ")]
             .concat();
         assert!(parse("WebcastChatMessage", &payload).is_none());
+    }
+
+    #[test]
+    fn 表情弹幕解出正文与表情标记() {
+        // EmojiChatMessage: f1=Common, f2=User, f3=emojiId, f5=defaultContent
+        let payload = [
+            nested(1, &common_body(88, 1_700_000_000_000)),
+            nested(2, &user_body(42, "老板A", None)),
+            v(3, 42),
+            s(5, "微笑"),
+        ]
+        .concat();
+        let Some(DouyinEvent::Danmaku(d)) = parse("WebcastEmojiChatMessage", &payload) else {
+            panic!("应解出表情弹幕");
+        };
+        assert_eq!(d.content, "微笑");
+        assert_eq!(d.username, "老板A");
+        assert_eq!(d.id, "88");
+        assert_eq!(d.emote.map(|e| e.emoji_id), Some(42));
+    }
+
+    #[test]
+    fn 普通弹幕不带表情标记() {
+        let payload = [nested(1, &common_body(1, 0)), nested(2, &user_body(42, "A", None)), s(3, "你好")]
+            .concat();
+        let Some(DouyinEvent::Danmaku(d)) = parse("WebcastChatMessage", &payload) else {
+            panic!("应解出弹幕");
+        };
+        assert!(d.emote.is_none());
+    }
+
+    #[test]
+    fn 表情名取不到时整条丢掉() {
+        // 既没 defaultContent 也没 emojiContent：宁可丢掉，也不给弹幕窗留一行空白
+        let payload = [nested(1, &common_body(1, 0)), nested(2, &user_body(42, "A", None)), v(3, 42)]
+            .concat();
+        assert!(parse("WebcastEmojiChatMessage", &payload).is_none());
     }
 
     #[test]

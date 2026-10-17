@@ -28,6 +28,21 @@ pub struct Danmaku {
     /// 所以只下发等级。礼物行不传这个字段（打赏行已有用户名与礼物名，再加一枚徽章只挤横向空间）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fansclub_level: Option<u32>,
+    /// 表情弹幕（有值时 `content` 就是表情名）；普通弹幕不下发
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emote: Option<Emote>,
+}
+
+/// 弹幕表情包
+///
+/// 抖音把表情弹幕做成**独立的消息类型**（`WebcastEmojiChatMessage`，字段号见
+/// `probe/reference/douyin.proto`），解析在 `crate::douyin::emote`。
+/// 正文（`Danmaku.content`）就是表情名，渲染时由前端补上中括号（「微笑」→「[微笑]」），
+/// 朗读默认跳过这类弹幕（`TtsConfig::read_emote`）。
+#[derive(Debug, Clone, Serialize)]
+pub struct Emote {
+    /// 表情 id（`WebcastEmojiChatMessage.f3`）：同一个表情在不同直播间 id 不变，排障时用它对齐
+    pub emoji_id: i64,
 }
 
 /// 打赏形态。抖音目前只有礼物（无 SC / 无舰队）
