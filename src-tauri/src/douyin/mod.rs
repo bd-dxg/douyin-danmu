@@ -7,7 +7,9 @@
 //! - 收到帧后**必须回 ack**，否则服务端反复重推同一帧、cursor 不推进
 //! - 礼物消息**只在登录态下才推**（匿名收不到）
 
+pub mod emote;
 pub mod event;
+pub mod live;
 pub mod login;
 pub mod login_helper;
 pub mod parser;

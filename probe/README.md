@@ -87,6 +87,29 @@ nick=用户3077822122717 gift=小心心    giftId=463 diamond=1 combo=1 repeat=1
 
 > 踩坑：`status_code: 0` 一开始骗过了我们 —— 只看响应会以为「去掉 `a_bogus` 也能发」，实际服务端只是**假成功**。换成「房间里有没有真出现」当判据才看清。
 
+## 关注在播列表（已实测，**不需要签名**）
+
+www 关注页「正在直播(N)」那一块的接口，一个请求就能拿到「已关注且在播」的全部主播。
+
+| 环节 | 结论 |
+| --- | --- |
+| 接口 | `POST https://www.douyin.com/webcast/feed/follow_top/?device_platform=webapp&aid=6383&channel=channel_pc_web`，参数在 **body**（`application/x-www-form-urlencoded`） |
+| 必填 body | `source_key=web_homepage_follow_top` + `follow_session_id=<游标>`（首次传 0）。页面还会带 `enter_source` / `need_map` / `need_pinned_info`，实测可省 |
+| 签名 | **不需要** `a_bogus` / `msToken` / `uifid` / `x-secsdk-csrf-token`（全部删掉仍回 `status_code: 0`）；只需登录 Cookie |
+| 返回 | `data[]` 每条一个直播间：`owner.nickname` 主播名、`web_rid` **直播间短号**（不是抖音号）、`data.id_str` 真实 room_id |
+| 翻页 | `extra.follow_session_id`（下一页游标）+ `extra.has_more`；`extra.total` 是在播总数 |
+
+> 踩坑：参数只放 query 里会回 `status_code=10011 Request params error`，很容易误判成「缺签名」——真凶是 body 里的 `source_key`。
+
+### 废弃的两步方案（留档）
+
+先试过「关注列表 `GET /webcast/user/follow/list/` + 逐个 uid 探活 `GET /webcast/distribution/check_user_live_status/`」：
+
+- 关注列表只给 uid / 昵称 / 抖音号，**不含开播状态**（`web_rid` 字段实测为空）
+- 探活接口**一次只认第一个 uid**（`user_ids=A+B` 只看 A；逗号、重复参数直接报 `10011`），关注 500 人就得打 500 个请求
+
+→ 已被 `follow_top` 取代。
+
 ## 怎么复跑
 
 ```powershell

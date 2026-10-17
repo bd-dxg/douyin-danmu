@@ -33,6 +33,11 @@ pub(super) fn matches_filter(d: &Danmaku, f: &DanmakuFilter) -> bool {
 /// 不能只剩下「小明说」这种没内容的空壳。
 /// `max_len` 只约束正文：用户名是固定少量字，不该挤掉弹幕本身。
 pub(super) fn build_text(d: &Danmaku, config: &TtsConfig) -> String {
+    // 表情弹幕默认不念：正文就是表情名（「微笑」），念出来没意义。
+    // 打开「朗读筛选 → 朗读表情弹幕」后按普通弹幕照念。
+    if d.emote.is_some() && !config.read_emote {
+        return String::new();
+    }
     let mut content = clean_for_speech(&d.content);
     if !has_readable_content(&content) {
         return String::new();
@@ -175,6 +180,15 @@ mod tests {
             timestamp: 0,
             level: None,
             fansclub_level: None,
+            emote: None,
+        }
+    }
+
+    /// 表情弹幕（`WebcastEmojiChatMessage` 解出来的形态：正文就是表情名）
+    fn emote_danmaku(content: &str) -> Danmaku {
+        Danmaku {
+            emote: Some(crate::douyin::event::Emote { emoji_id: 42 }),
+            ..danmaku(content)
         }
     }
 
@@ -222,6 +236,34 @@ mod tests {
             ..TtsConfig::default()
         };
         assert_eq!(build_text(&d, &with_user), "小明说 谢谢礼物");
+    }
+
+    #[test]
+    fn 表情弹幕默认不念() {
+        // 正文就是表情名（「微笑」），念出来没意义；连用户名也不念
+        let config = TtsConfig {
+            read_username: true,
+            ..TtsConfig::default()
+        };
+        assert_eq!(build_text(&emote_danmaku("微笑"), &config), "");
+    }
+
+    #[test]
+    fn 开启开关后表情弹幕照常念() {
+        // 开关打开就走普通弹幕的路：正文（即表情名）照念
+        let config = TtsConfig {
+            read_emote: true,
+            read_username: true,
+            ..TtsConfig::default()
+        };
+        assert_eq!(build_text(&emote_danmaku("微笑"), &config), "小明说 微笑");
+    }
+
+    #[test]
+    fn 普通弹幕里有方括号也照念() {
+        // 抖音的表情是独立消息类型，正文里的方括号是用户手打的，不能当表情剥掉
+        let config = TtsConfig::default();
+        assert_eq!(build_text(&danmaku("价格[10]元"), &config), "价格[10]元");
     }
 
     #[test]
