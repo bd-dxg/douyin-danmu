@@ -125,7 +125,7 @@ function applyFilter(next: DanmakuFilter) {
         <SettingRow label="朗读表情弹幕">
           <input v-model="config.read_emote" type="checkbox" class="switch" @change="save()" />
         </SettingRow>
-        <p class="tip">默认关：表情弹幕整条不念（它的正文就是表情名，如「微笑」）。打开后按普通弹幕照念。</p>
+        <p class="tip">默认关：表情弹幕整条不念（正文就是表情名，如「微笑」）；打开后按普通弹幕照念。</p>
       </div>
       <DanmakuFilterPanel :model-value="config.filter" verb="朗读" @change="applyFilter" />
     </section>
