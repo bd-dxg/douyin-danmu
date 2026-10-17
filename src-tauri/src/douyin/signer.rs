@@ -88,8 +88,7 @@ impl WebviewSigner {
 
     /// 自检：跑一次固定 stub 的签名，把结果交出去（供启动时打日志）
     pub async fn self_check(&self) -> Result<String, SignError> {
-        self.sign("c1180e560e13ce8c5567b4002dbac516".to_owned())
-            .await
+        self.sign("c1180e560e13ce8c5567b4002dbac516".to_owned()).await
     }
 }
 

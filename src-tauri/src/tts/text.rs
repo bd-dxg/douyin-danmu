@@ -3,10 +3,10 @@
 //! 全文只有纯字符串处理，不碰队列与网络，便于单测覆盖边界。
 //! 筛选语义与前端 Overlay 的显示筛选一致（见 `matches_filter` 注释）。
 
+use crate::config::{DanmakuFilter, TtsConfig};
 use crate::douyin::emote::strip_bracket_emotes;
 use crate::douyin::event::{Backing, Danmaku};
 use crate::douyin::mention::split_mention;
-use crate::config::{DanmakuFilter, TtsConfig};
 
 /// 同一字符连续重复的最大保留次数（「哈哈哈哈哈哈哈」只读三个）
 const MAX_REPEAT: u32 = 3;

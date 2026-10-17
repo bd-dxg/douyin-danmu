@@ -26,10 +26,16 @@ struct Common {
 /// 从 payload 里取 `Common`（f1）。消息体没有 Common 时用 0 + 当前时间兜底。
 fn common(fields: &[Field<'_>], fallback_ts: i64) -> Common {
     let Some(raw) = proto::message(fields, 1) else {
-        return Common { msg_id: 0, ts: fallback_ts };
+        return Common {
+            msg_id: 0,
+            ts: fallback_ts,
+        };
     };
     let Ok(cf) = read_fields(raw) else {
-        return Common { msg_id: 0, ts: fallback_ts };
+        return Common {
+            msg_id: 0,
+            ts: fallback_ts,
+        };
     };
     let msg_id = proto::varint(&cf, 2).unwrap_or(0);
     // f4 = createTime（毫秒）；为 0 时说明这条消息没带时间
@@ -86,9 +92,7 @@ fn user(raw: &[u8]) -> Option<UserInfo> {
 fn fansclub_level(fans_club: &[u8]) -> Option<u32> {
     let outer = read_fields(fans_club).ok()?;
     let data = read_fields(proto::message(&outer, 1)?).ok()?;
-    proto::varint(&data, 2)
-        .map(|v| v as u32)
-        .filter(|v| *v > 0)
+    proto::varint(&data, 2).map(|v| v as u32).filter(|v| *v > 0)
 }
 
 /// PayGrade 里的等级：varint(f6) 优先，没值再从等级图标 URL 抠
@@ -190,11 +194,7 @@ fn parse_emoji_chat(payload: &[u8], fallback_ts: i64) -> Option<Danmaku> {
     };
     // 逐条表情的识别日志走 debug：日志级别是 Info，平时不落盘、不刷屏；
     // 排查「表情弹幕没显示 / 还在被念」时把 `lib.rs` 的 level 临时改成 Debug 即可看到
-    log::debug!(
-        "[emote] 识别表情弹幕「{}」emojiId={}",
-        emote.name,
-        emote.emote.emoji_id
-    );
+    log::debug!("[emote] 识别表情弹幕「{}」emojiId={}", emote.name, emote.emote.emoji_id);
     Some(Danmaku {
         id: event_id(c.msg_id, c.ts, u.uid),
         username: u.nick,
@@ -337,9 +337,7 @@ mod tests {
 
     /// User 带上 PayGrade（用户等级真正的位位置）
     fn user_body_with_grade(uid: u64, nick: &str, grade: u32) -> Vec<u8> {
-        let url = format!(
-            "https://p3-pc.douyinpic.com/aweme/100x100/new_user_grade_level_v1_{grade}.png~tplv-x.webp"
-        );
+        let url = format!("https://p3-pc.douyinpic.com/aweme/100x100/new_user_grade_level_v1_{grade}.png~tplv-x.webp");
         // PayGrade{ f4=icon{ f1=url_list } }
         let icon = s(1, &url);
         let pay_grade = nested(4, &icon);
@@ -367,10 +365,7 @@ mod tests {
         assert_eq!(d.username, "张三");
         assert_eq!(d.content, "好听");
         assert_eq!(d.timestamp, 1_700_000_000);
-        assert_eq!(
-            d.level, None,
-            "User.f6 是本房间粉丝团等级（可能非 0），不能当用户等级"
-        );
+        assert_eq!(d.level, None, "User.f6 是本房间粉丝团等级（可能非 0），不能当用户等级");
     }
 
     #[test]
@@ -476,8 +471,12 @@ mod tests {
 
     #[test]
     fn 空正文弹幕被丢弃() {
-        let payload = [nested(1, &common_body(1, 0)), nested(2, &user_body(1, "A", None)), s(3, "   ")]
-            .concat();
+        let payload = [
+            nested(1, &common_body(1, 0)),
+            nested(2, &user_body(1, "A", None)),
+            s(3, "   "),
+        ]
+        .concat();
         assert!(parse("WebcastChatMessage", &payload).is_none());
     }
 
@@ -502,8 +501,12 @@ mod tests {
 
     #[test]
     fn 普通弹幕不带表情标记() {
-        let payload = [nested(1, &common_body(1, 0)), nested(2, &user_body(42, "A", None)), s(3, "你好")]
-            .concat();
+        let payload = [
+            nested(1, &common_body(1, 0)),
+            nested(2, &user_body(42, "A", None)),
+            s(3, "你好"),
+        ]
+        .concat();
         let Some(DouyinEvent::Danmaku(d)) = parse("WebcastChatMessage", &payload) else {
             panic!("应解出弹幕");
         };
@@ -513,8 +516,12 @@ mod tests {
     #[test]
     fn 表情名取不到时整条丢掉() {
         // 既没 defaultContent 也没 emojiContent：宁可丢掉，也不给弹幕窗留一行空白
-        let payload = [nested(1, &common_body(1, 0)), nested(2, &user_body(42, "A", None)), v(3, 42)]
-            .concat();
+        let payload = [
+            nested(1, &common_body(1, 0)),
+            nested(2, &user_body(42, "A", None)),
+            v(3, 42),
+        ]
+        .concat();
         assert!(parse("WebcastEmojiChatMessage", &payload).is_none());
     }
 
@@ -586,7 +593,7 @@ mod tests {
     #[test]
     fn 不关心的消息类型返回_none() {
         assert!(parse("WebcastRoomStatsMessage", b"\x08\x01").is_none());
-        assert!(parse("WebcastInRoomBannerMessage", b"") .is_none());
+        assert!(parse("WebcastInRoomBannerMessage", b"").is_none());
     }
 
     #[test]

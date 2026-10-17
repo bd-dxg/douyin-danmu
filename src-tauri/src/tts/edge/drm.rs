@@ -26,28 +26,24 @@ const WIN_EPOCH: f64 = 11_644_473_600.0;
 const U32_MASK: u64 = 0xFFFF_FFFF;
 
 const SHA256_INITIAL: [u32; 8] = [
-    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB,
-    0x5BE0CD19,
+    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
 ];
 const SHA256_STATE: [u32; 8] = [
-    0xFD9FBEA2, 0x91243CE7, 0xBE499094, 0xCD2E1E0A, 0x6C006F49, 0x04BD35AB, 0xFEB0A7E4,
-    0x03EFFBD2,
+    0xFD9FBEA2, 0x91243CE7, 0xBE499094, 0xCD2E1E0A, 0x6C006F49, 0x04BD35AB, 0xFEB0A7E4, 0x03EFFBD2,
 ];
 const SHA256_SCHEDULE: [u32; 14] = [
-    0xEB24BF9E, 0x1558691F, 0xA0C09EE2, 0x0CFA32BA, 0xA622EE8C, 0xD1DD9491, 0xC0DD25A0,
-    0xF9E70AB6, 0xF0C31573, 0x7058CE4E, 0x7188E606, 0x00E5AB33, 0xD258B060, 0x72766564,
+    0xEB24BF9E, 0x1558691F, 0xA0C09EE2, 0x0CFA32BA, 0xA622EE8C, 0xD1DD9491, 0xC0DD25A0, 0xF9E70AB6, 0xF0C31573,
+    0x7058CE4E, 0x7188E606, 0x00E5AB33, 0xD258B060, 0x72766564,
 ];
 /// 标准 SHA-256 的轮常数，仅第 15 项（下标 14）被替换成 [`SHA256_ADJUSTMENT`]
 const SHA256_ROUND_CONSTANTS: [u32; 64] = [
-    0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4,
-    0xAB1C5ED5, 0xD807AA98, 0x12835B01, 0x243185BE, 0x550C7DC3, 0x72BE5D74, 0x80DEB1FE,
-    0x9BDC06A7, 0xC19BF174, 0xE49B69C1, 0xEFBE4786, 0x0FC19DC6, 0x240CA1CC, 0x2DE92C6F,
-    0x4A7484AA, 0x5CB0A9DC, 0x76F988DA, 0x983E5152, 0xA831C66D, 0xB00327C8, 0xBF597FC7,
-    0xC6E00BF3, 0xD5A79147, 0x06CA6351, 0x14292967, 0x27B70A85, 0x2E1B2138, 0x4D2C6DFC,
-    0x53380D13, 0x650A7354, 0x766A0ABB, 0x81C2C92E, 0x92722C85, 0xA2BFE8A1, 0xA81A664B,
-    0xC24B8B70, 0xC76C51A3, 0xD192E819, 0xD6990624, 0xF40E3585, 0x106AA070, 0x19A4C116,
-    0x1E376C08, 0x2748774C, 0x34B0BCB5, 0x391C0CB3, 0x4ED8AA4A, 0x5B9CCA4F, 0x682E6FF3,
-    0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208, 0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7,
+    0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4, 0xAB1C5ED5, 0xD807AA98,
+    0x12835B01, 0x243185BE, 0x550C7DC3, 0x72BE5D74, 0x80DEB1FE, 0x9BDC06A7, 0xC19BF174, 0xE49B69C1, 0xEFBE4786,
+    0x0FC19DC6, 0x240CA1CC, 0x2DE92C6F, 0x4A7484AA, 0x5CB0A9DC, 0x76F988DA, 0x983E5152, 0xA831C66D, 0xB00327C8,
+    0xBF597FC7, 0xC6E00BF3, 0xD5A79147, 0x06CA6351, 0x14292967, 0x27B70A85, 0x2E1B2138, 0x4D2C6DFC, 0x53380D13,
+    0x650A7354, 0x766A0ABB, 0x81C2C92E, 0x92722C85, 0xA2BFE8A1, 0xA81A664B, 0xC24B8B70, 0xC76C51A3, 0xD192E819,
+    0xD6990624, 0xF40E3585, 0x106AA070, 0x19A4C116, 0x1E376C08, 0x2748774C, 0x34B0BCB5, 0x391C0CB3, 0x4ED8AA4A,
+    0x5B9CCA4F, 0x682E6FF3, 0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208, 0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7,
     0xC67178F2,
 ];
 const SHA256_ADJUSTMENT: u32 = 0xC9DC06A7;
@@ -148,11 +144,7 @@ fn sha256_rounds(state: [u32; 8], words: &[u32], first_round: usize) -> [u32; 8]
     for index in first_round..aligned {
         let rot_e = e * 0x1_0000_0001;
         let rot_a = a * 0x1_0000_0001;
-        let t1 = h
-            + rotr(rot_e)
-            + (g ^ (e & (f ^ g)))
-            + constant(index)
-            + words[index] as u64;
+        let t1 = h + rotr(rot_e) + (g ^ (e & (f ^ g))) + constant(index) + words[index] as u64;
         let t2 = big_sigma0(rot_a) + ((a & b) | (c & (a | b)));
         let na = (t1 + t2) & m;
         let ne = (d + t1) & m;
@@ -172,78 +164,49 @@ fn sha256_rounds(state: [u32; 8], words: &[u32], first_round: usize) -> [u32; 8]
     while index < 64 {
         let rot_e = e * 0x1_0000_0001;
         let rot_a = a * 0x1_0000_0001;
-        let t1 =
-            h + rotr(rot_e) + (g ^ (e & (f ^ g))) + constant(index) + words[index] as u64;
+        let t1 = h + rotr(rot_e) + (g ^ (e & (f ^ g))) + constant(index) + words[index] as u64;
         d = (d + t1) & m;
         h = (t1 + big_sigma0(rot_a) + ((a & b) | (c & (a | b)))) & m;
 
         let rot_e = d * 0x1_0000_0001;
         let rot_a = h * 0x1_0000_0001;
-        let t1 = g
-            + rotr(rot_e)
-            + (f ^ (d & (e ^ f)))
-            + constant(index + 1)
-            + words[index + 1] as u64;
+        let t1 = g + rotr(rot_e) + (f ^ (d & (e ^ f))) + constant(index + 1) + words[index + 1] as u64;
         c = (c + t1) & m;
         g = (t1 + big_sigma0(rot_a) + ((h & a) | (b & (h | a)))) & m;
 
         let rot_e = c * 0x1_0000_0001;
         let rot_a = g * 0x1_0000_0001;
-        let t1 = f
-            + rotr(rot_e)
-            + (e ^ (c & (d ^ e)))
-            + constant(index + 2)
-            + words[index + 2] as u64;
+        let t1 = f + rotr(rot_e) + (e ^ (c & (d ^ e))) + constant(index + 2) + words[index + 2] as u64;
         b = (b + t1) & m;
         f = (t1 + big_sigma0(rot_a) + ((g & h) | (a & (g | h)))) & m;
 
         let rot_e = b * 0x1_0000_0001;
         let rot_a = f * 0x1_0000_0001;
-        let t1 = e
-            + rotr(rot_e)
-            + (d ^ (b & (c ^ d)))
-            + constant(index + 3)
-            + words[index + 3] as u64;
+        let t1 = e + rotr(rot_e) + (d ^ (b & (c ^ d))) + constant(index + 3) + words[index + 3] as u64;
         a = (a + t1) & m;
         e = (t1 + big_sigma0(rot_a) + ((f & g) | (h & (f | g)))) & m;
 
         let rot_e = a * 0x1_0000_0001;
         let rot_a = e * 0x1_0000_0001;
-        let t1 = d
-            + rotr(rot_e)
-            + (c ^ (a & (b ^ c)))
-            + constant(index + 4)
-            + words[index + 4] as u64;
+        let t1 = d + rotr(rot_e) + (c ^ (a & (b ^ c))) + constant(index + 4) + words[index + 4] as u64;
         h = (h + t1) & m;
         d = (t1 + big_sigma0(rot_a) + ((e & f) | (g & (e | f)))) & m;
 
         let rot_e = h * 0x1_0000_0001;
         let rot_a = d * 0x1_0000_0001;
-        let t1 = c
-            + rotr(rot_e)
-            + (b ^ (h & (a ^ b)))
-            + constant(index + 5)
-            + words[index + 5] as u64;
+        let t1 = c + rotr(rot_e) + (b ^ (h & (a ^ b))) + constant(index + 5) + words[index + 5] as u64;
         g = (g + t1) & m;
         c = (t1 + big_sigma0(rot_a) + ((d & e) | (f & (d | e)))) & m;
 
         let rot_e = g * 0x1_0000_0001;
         let rot_a = c * 0x1_0000_0001;
-        let t1 = b
-            + rotr(rot_e)
-            + (a ^ (g & (h ^ a)))
-            + constant(index + 6)
-            + words[index + 6] as u64;
+        let t1 = b + rotr(rot_e) + (a ^ (g & (h ^ a))) + constant(index + 6) + words[index + 6] as u64;
         f = (f + t1) & m;
         b = (t1 + big_sigma0(rot_a) + ((c & d) | (e & (c | d)))) & m;
 
         let rot_e = f * 0x1_0000_0001;
         let rot_a = b * 0x1_0000_0001;
-        let t1 = a
-            + rotr(rot_e)
-            + (h ^ (f & (g ^ h)))
-            + constant(index + 7)
-            + words[index + 7] as u64;
+        let t1 = a + rotr(rot_e) + (h ^ (f & (g ^ h))) + constant(index + 7) + words[index + 7] as u64;
         e = (e + t1) & m;
         a = (t1 + big_sigma0(rot_a) + ((b & c) | (d & (b | c)))) & m;
 
@@ -337,9 +300,7 @@ fn cs64_digest(data: &[u8], digest: &[u8; 32]) -> (u32, u32) {
     let mut terms: Vec<u32> = CS64_COEFFICIENTS
         .iter()
         .enumerate()
-        .map(|(i, (coefficient, _))| {
-            (*coefficient as u128 * factors[i % 2] as u128 & m as u128) as u32
-        })
+        .map(|(i, (coefficient, _))| (*coefficient as u128 * factors[i % 2] as u128 & m as u128) as u32)
         .collect();
     let mut offsets: Vec<u32> = CS64_COEFFICIENTS.iter().map(|(_, offset)| *offset).collect();
 
@@ -352,12 +313,7 @@ fn cs64_digest(data: &[u8], digest: &[u8; 32]) -> (u32, u32) {
     for (index, &word) in word_list.iter().enumerate() {
         let key = if index % 2 == 0 { key_a } else { key_b };
         let mut term = word as u128 * key as u128;
-        let mut offset = rol16(word) as u64
-            * if index % 2 == 0 {
-                0xEF0569FB
-            } else {
-                0xC31713DB
-            };
+        let mut offset = rol16(word) as u64 * if index % 2 == 0 { 0xEF0569FB } else { 0xC31713DB };
         if index == 0 {
             term += CS64_ADJUSTMENT0 as u128 * factors[0] as u128;
             offset += CS64_ADJUSTMENT1 as u64;
@@ -527,10 +483,7 @@ mod tests {
 
     #[test]
     fn rfc1123_date_parses() {
-        assert_eq!(
-            parse_rfc1123("Wed, 21 Oct 2015 07:28:00 GMT"),
-            Some(1_445_412_480.0)
-        );
+        assert_eq!(parse_rfc1123("Wed, 21 Oct 2015 07:28:00 GMT"), Some(1_445_412_480.0));
         assert_eq!(parse_rfc1123("Thu, 01 Jan 1970 00:00:00 GMT"), Some(0.0));
         assert_eq!(parse_rfc1123("Thu, 01 Jan 1970 00:00:00 UTC"), None);
         assert_eq!(parse_rfc1123("not a date"), None);

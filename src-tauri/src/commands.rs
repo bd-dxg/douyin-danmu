@@ -52,9 +52,7 @@ pub(crate) fn overlay_get_clickthrough(state: State<'_, OverlayState>) -> bool {
 /// 查询 Overlay 是否可见
 #[tauri::command]
 pub(crate) fn overlay_is_visible(app: AppHandle) -> bool {
-    overlay_window(&app)
-        .and_then(|w| w.is_visible().ok())
-        .unwrap_or(false)
+    overlay_window(&app).and_then(|w| w.is_visible().ok()).unwrap_or(false)
 }
 
 /// 开关始终置顶
@@ -234,20 +232,14 @@ pub(crate) fn get_login_info(state: State<'_, AppState>) -> serde_json::Value {
 ///
 /// 命令一直悬着直到子进程结束（成功 / 超时 / 窗口被关），调用方要自己显示进行中状态。
 #[tauri::command]
-pub(crate) async fn douyin_login_open(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub(crate) async fn douyin_login_open(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| format!("取程序路径失败：{e}"))?;
     // output() 会阻塞线程，丢进阻塞线程池等（helper 最长活 300 秒）
-    let out = tauri::async_runtime::spawn_blocking(move || {
-        std::process::Command::new(exe)
-            .arg(LOGIN_HELPER_ARG)
-            .output()
-    })
-    .await
-    .map_err(|e| format!("等待登录进程失败：{e}"))?
-    .map_err(|e| format!("启动登录进程失败：{e}"))?;
+    let out =
+        tauri::async_runtime::spawn_blocking(move || std::process::Command::new(exe).arg(LOGIN_HELPER_ARG).output())
+            .await
+            .map_err(|e| format!("等待登录进程失败：{e}"))?
+            .map_err(|e| format!("启动登录进程失败：{e}"))?;
 
     if !out.status.success() {
         // 失败原因在 helper 的 stderr 上，转记进主程序日志（不把技术细节抛给用户）
@@ -376,10 +368,7 @@ fn voice_options(voices: &[(String, String)]) -> Vec<serde_json::Value> {
 /// ShellExecuteW 对不存在的路径会返回 SE_ERR_* 而打不开。
 #[tauri::command]
 pub(crate) fn open_log_dir(app: AppHandle) -> Result<(), String> {
-    let dir = app
-        .path()
-        .app_log_dir()
-        .map_err(|e| format!("取日志目录失败: {e}"))?;
+    let dir = app.path().app_log_dir().map_err(|e| format!("取日志目录失败: {e}"))?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建日志目录失败: {e}"))?;
     crate::update::open_in_shell(&dir.to_string_lossy())
 }

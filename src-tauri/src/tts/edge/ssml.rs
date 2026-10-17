@@ -47,9 +47,7 @@ fn strip_control_chars(s: &str) -> String {
 }
 
 fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -68,13 +66,9 @@ mod tests {
     #[test]
     fn voice_name_is_whitelisted() {
         // voice 是 SSML 里唯一没走 xml_escape 的插值点：一个引号就能拆坏 name 属性
-        assert_eq!(
-            safe_voice("zh-CN-XiaoxiaoNeural'/><x a='1"),
-            "zh-CN-XiaoxiaoNeuralxa1"
-        );
+        assert_eq!(safe_voice("zh-CN-XiaoxiaoNeural'/><x a='1"), "zh-CN-XiaoxiaoNeuralxa1");
         // 全被过滤掉 → 回退内置默认音色，而不是生成空 name
         assert_eq!(safe_voice("'\"<>=%$"), VOICES[0].0);
-        assert!(build_ssml("zh-CN-XiaoyiNeural", 0, 0, "a")
-            .contains("<voice name='zh-CN-XiaoyiNeural'>"));
+        assert!(build_ssml("zh-CN-XiaoyiNeural", 0, 0, "a").contains("<voice name='zh-CN-XiaoyiNeural'>"));
     }
 }

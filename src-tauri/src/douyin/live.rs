@@ -30,7 +30,8 @@ const MAX_PAGES: usize = 10;
 /// 未登录 / 登录态失效的业务码
 const NOT_LOGIN_CODE: i64 = 20003;
 
-const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+const UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 /// 一条「已关注且在播」记录
 #[derive(Debug, Clone, serde::Serialize)]
@@ -123,15 +124,12 @@ fn parse_item(item: &serde_json::Value) -> Option<FollowingLive> {
     if uname.is_empty() {
         return None;
     }
-    let uid = room
-        .get("owner_user_id")
-        .and_then(|u| u.as_i64())
-        .or_else(|| {
-            owner
-                .get("id_str")
-                .and_then(|s| s.as_str())
-                .and_then(|s| s.parse::<i64>().ok())
-        })?;
+    let uid = room.get("owner_user_id").and_then(|u| u.as_i64()).or_else(|| {
+        owner
+            .get("id_str")
+            .and_then(|s| s.as_str())
+            .and_then(|s| s.parse::<i64>().ok())
+    })?;
     let web_rid = item
         .get("web_rid")
         .and_then(|s| s.as_str())

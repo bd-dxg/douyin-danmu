@@ -23,8 +23,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
-use tokio::sync::Notify;
 use text::{build_backing_text, build_text, clean_for_speech, is_emote, matches_filter};
+use tokio::sync::Notify;
 
 /// 打断冷却：距上次打断不足这么久就不再作废在途音频
 /// （否则高频房间合成刚起步就被反复作废，白忙一场）
@@ -277,12 +277,7 @@ pub(super) fn spawn_gift_timer(app: AppHandle) {
 
 /// 连击合并窗口：沿用礼物渲染侧的配置（同一个直播间里「连击」应是同一口径）
 fn combo_window(app: &AppHandle) -> Duration {
-    let secs = app
-        .state::<OverlayState>()
-        .gift
-        .lock()
-        .unwrap()
-        .combo_window_secs;
+    let secs = app.state::<OverlayState>().gift.lock().unwrap().combo_window_secs;
     Duration::from_secs(secs.max(1))
 }
 
@@ -397,11 +392,7 @@ mod tests {
             timestamp: 0,
             level: None,
         };
-        state
-            .gift
-            .lock()
-            .unwrap()
-            .on_backing(b, Instant::now());
+        state.gift.lock().unwrap().on_backing(b, Instant::now());
         state.set_gift_config(GiftTtsConfig {
             enabled: false,
             min_amount_yuan: 0.0,

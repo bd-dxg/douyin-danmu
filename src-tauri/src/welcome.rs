@@ -114,15 +114,9 @@ mod tests {
         let now = Instant::now();
         assert!(inner.admit(&welcome(WelcomeKind::Enter, 1), now));
         // 31 秒后：已出限速窗口，但仍在 60 秒去重窗口内 → 挡在去重这一关
-        assert!(!inner.admit(
-            &welcome(WelcomeKind::Enter, 1),
-            now + Duration::from_secs(31)
-        ));
+        assert!(!inner.admit(&welcome(WelcomeKind::Enter, 1), now + Duration::from_secs(31)));
         // 61 秒后：两个窗口都过期
-        assert!(inner.admit(
-            &welcome(WelcomeKind::Enter, 1),
-            now + Duration::from_secs(61)
-        ));
+        assert!(inner.admit(&welcome(WelcomeKind::Enter, 1), now + Duration::from_secs(61)));
     }
 
     #[test]
@@ -178,9 +172,6 @@ mod tests {
                 now + Duration::from_secs(uid as u64 * 31),
             );
         }
-        assert!(
-            inner.seen.len() <= DEDUPE_CAP,
-            "清空后表长应回落到容量以内"
-        );
+        assert!(inner.seen.len() <= DEDUPE_CAP, "清空后表长应回落到容量以内");
     }
 }

@@ -39,24 +39,13 @@ impl GiftAggregator {
                 p.row.amount_fen = b.amount_fen;
             }
             None => {
-                self.groups.insert(
-                    key,
-                    Pending {
-                        row: b,
-                        last_at: now,
-                    },
-                );
+                self.groups.insert(key, Pending { row: b, last_at: now });
             }
         }
     }
 
     /// 取出静默已满一个窗口的分组（连击结束），默认门槛没过的直接丢弃
-    pub(super) fn take_due(
-        &mut self,
-        now: Instant,
-        window: Duration,
-        cfg: &GiftTtsConfig,
-    ) -> Vec<Backing> {
+    pub(super) fn take_due(&mut self, now: Instant, window: Duration, cfg: &GiftTtsConfig) -> Vec<Backing> {
         let threshold = threshold_fen(cfg);
         let mut due = Vec::new();
         self.groups.retain(|_, p| {
@@ -120,18 +109,14 @@ mod tests {
         }
 
         // 窗口未满 → 还不念
-        assert!(agg
-            .take_due(now + Duration::from_secs(4), window(), &cfg())
-            .is_empty());
+        assert!(agg.take_due(now + Duration::from_secs(4), window(), &cfg()).is_empty());
         // 窗口满了 → 念一次，数量与金额都是累计值
         let due = agg.take_due(now + window(), window(), &cfg());
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].num, 3);
         assert_eq!(due[0].amount_fen, 300);
         // 取走后不再重复
-        assert!(agg
-            .take_due(now + window(), window(), &cfg())
-            .is_empty());
+        assert!(agg.take_due(now + window(), window(), &cfg()).is_empty());
     }
 
     #[test]

@@ -104,9 +104,7 @@ fn take_pending(inner: &mut Inner) -> Vec<Backing> {
 fn merge(inner: &mut Inner, b: Backing, now: Instant, cfg: &GiftConfig) -> Option<Backing> {
     let window = Duration::from_secs(cfg.combo_window_secs.max(1));
     // 窗口外的分组视为已结束：其行留在前端列表里不再变化
-    inner
-        .groups
-        .retain(|_, g| now.duration_since(g.last_at) < window);
+    inner.groups.retain(|_, g| now.duration_since(g.last_at) < window);
 
     // 连击分组键 = 用户 + 礼物（窗口结束后同一观众再送同一种礼物会拿到新行）
     let key = format!("{}-{}", b.uid, b.gift_id);

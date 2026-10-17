@@ -84,7 +84,12 @@ pub fn read_fields(mut buf: &[u8]) -> Result<Vec<Field<'_>>, ProtoError> {
             WIRE_VARINT => {
                 let (v, rest) = read_varint(buf)?;
                 buf = rest;
-                out.push(Field { num, wire, varint: v, bytes: EMPTY_PAYLOAD });
+                out.push(Field {
+                    num,
+                    wire,
+                    varint: v,
+                    bytes: EMPTY_PAYLOAD,
+                });
             }
             WIRE_LEN => {
                 let (len, rest) = read_varint(buf)?;
@@ -94,7 +99,12 @@ pub fn read_fields(mut buf: &[u8]) -> Result<Vec<Field<'_>>, ProtoError> {
                 }
                 let (body, rest) = rest.split_at(len);
                 buf = rest;
-                out.push(Field { num, wire, varint: 0, bytes: body });
+                out.push(Field {
+                    num,
+                    wire,
+                    varint: 0,
+                    bytes: body,
+                });
             }
             WIRE_64BIT => {
                 if buf.len() < 8 {

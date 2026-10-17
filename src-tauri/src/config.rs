@@ -70,9 +70,7 @@ fn load_config_unlocked(app: &AppHandle) -> ConfigFile {
         match decrypt_cookie(&a.cookies) {
             Ok(plain) => a.cookies = plain,
             Err(e) => {
-                log::warn!(
-                    "[config] 登录 Cookie 解密失败（可能更换了系统账户），已清除登录态: {e}"
-                );
+                log::warn!("[config] 登录 Cookie 解密失败（可能更换了系统账户），已清除登录态: {e}");
                 cfg.auth = None;
             }
         }
@@ -101,8 +99,7 @@ fn write_config_file(app: &AppHandle, cfg: &ConfigFile) -> Result<(), String> {
     if let Some(a) = out.auth.as_mut() {
         a.cookies = encrypt_cookie(&a.cookies)?;
     }
-    let content =
-        serde_json::to_string_pretty(&out).map_err(|e| format!("序列化配置失败: {e}"))?;
+    let content = serde_json::to_string_pretty(&out).map_err(|e| format!("序列化配置失败: {e}"))?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, &content).map_err(|e| format!("写入临时配置失败: {e}"))?;
     match std::fs::rename(&tmp, &path) {
