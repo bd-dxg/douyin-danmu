@@ -19,6 +19,7 @@
 | 连击数量 | 服务端下发的是**累计值**（`combo_count`） | 本地**不要**再累加，否则连击数会变成平方 |
 | 身份 | 只有「用户等级（荣誉等级）」+「粉丝团（灯牌）等级」 | 没有房管 / 舰队 / 荣耀等级 / 粉丝牌名 |
 | 发送弹幕 | 不做（已探明） | 必须带 `a_bogus`，它只能由 webmssdk 生成 —— 唯一可行路径是隐藏窗口加载**整个直播间页**代发，内存开销大；目标用户（主播与一起玩的水友）有队伍麦，用不上。实测结论留档在 `probe/README.md` 的「发送弹幕」 |
+| 观看会话 | 同一账号 + 同一直播间**只保留一个**（手机端 / 网页端 / 助手互相会顶） | 所以 `enter` 请求**只能带 ttwid、不能带登录态**，否则助手一连接就把网页端顶掉；登录态只交给 WS（礼物必需） |
 
 ## 技术栈
 
@@ -76,6 +77,7 @@
 11. **helper 的 WebView2 必须用独立 user data folder**（`login-webview`）：WebView2 不允许两个环境（两个进程）指向同一个目录。给窗口设 `data_directory` 是 `WebviewWindowBuilder` 的能力，这也是 `tauri.conf.json` 的 `app.windows` 必须清空的原因
 12. **`additional_browser_args` 会整串替换 wry 的默认参数**：默认是 `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`，自己传参时必须把它带上
 13. **关注在播走 `POST https://www.douyin.com/webcast/feed/follow_top/`，不需要签名**：query 只要 `device_platform=webapp&aid=6383&channel=channel_pc_web`，body 只要 `source_key=web_homepage_follow_top&follow_session_id=<游标>`（页面真实请求里的 `a_bogus` / `msToken` / `uifid` / `x-secsdk-csrf-token` 全可省）。少了 body 里的 `source_key` 就回 `10011 Request params error`，**别往签名上排查**。返回里 `data[].owner.nickname` 是主播名、`web_rid` 是**直播间短号**（不是抖音号）、`data.id_str` 是真实 room_id，翻页看 `extra.follow_session_id` / `extra.has_more`
+14. **`enter` 请求绝不能带登录 cookie**（`resolver.rs` 的 `enter_cookie_for`，有单测卡着）：抖音对「同一账号 + 同一直播间」只保留一个观看会话 —— 手机端与网页端进同一直播间也会互相顶（实测）。带登录态调 `enter` 等于让账号「从助手进入直播间」，结果是把网页端的观看会话顶掉（真机现象：助手一连上网页就弹「账号已在其他地方进入直播间」）；匿名调它我们什么也不少（`room_id` / 主播名 / 开播状态匿名一样给）。登录态只交给 WS，礼物只在登录态下推
 
 ## 身份徽章（等级 / 灯牌）的字段口径
 

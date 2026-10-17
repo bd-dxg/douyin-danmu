@@ -6,6 +6,11 @@
 //!    `id_str` 才是真实 room_id（19 位）；短号**不能**直接连 WS
 //!
 //! 这两步都**不需要**签名（`a_bogus` 只出现在推荐流等接口上）。
+//!
+//! **第 2 步故意不带登录态**：抖音对「同一账号 + 同一直播间」只保留一个观看会话
+//! （实测：手机端与网页端进入同一直播间也会互相顶），而带登录 Cookie 调 enter 就等于让
+//! 账号「从助手进入直播间」，结果是把网页端的观看会话顶掉。匿名调它我们什么也不少（
+//! `room_id` / 主播名 / 开播状态匿名一样给），登录态仍然交给 WS —— 礼物只在登录态下推。
 
 use reqwest::Client;
 
@@ -51,6 +56,7 @@ impl std::fmt::Display for ResolveError {
 /// `login_cookie` 是登录态 cookie（可为空）——**务必保留新鲜的 ttwid**：
 /// 实测把带登录态的整串 cookie 直接替换掉 ttwid 会让 WS 握手返回
 /// `200 + handshake-msg: http: named cookie not present`。
+/// 登录态只跟着返回值（交给 WS 用），**不进 enter 请求**，原因见模块头注释。
 pub async fn resolve(client: &Client, web_rid: &str, login_cookie: Option<&str>) -> Result<DouyinRoomInfo, ResolveError> {
     let home = format!("https://live.douyin.com/{web_rid}");
     let resp = client
@@ -66,6 +72,7 @@ pub async fn resolve(client: &Client, web_rid: &str, login_cookie: Option<&str>)
     let _ = resp.text().await; // 主页 HTML 不用，但要读完才能复用连接
 
     let cookie = merge_cookie(login_cookie, &ttwid);
+    let enter_cookie = enter_cookie_for(&ttwid);
 
     let enter = format!(
         "https://live.douyin.com/webcast/room/web/enter/?aid=6383&app_name=douyin_web&live_id=1\
@@ -78,7 +85,7 @@ pub async fn resolve(client: &Client, web_rid: &str, login_cookie: Option<&str>)
         .header("user-agent", UA)
         .header("referer", &home)
         .header("accept-language", "zh-CN,zh;q=0.9")
-        .header("cookie", &cookie)
+        .header("cookie", &enter_cookie)
         .send()
         .await
         .map_err(|e| ResolveError::Network(e.to_string()))?
@@ -128,6 +135,14 @@ fn parse_room_id(json: &str) -> Option<String> {
         }
     }
     find_id_str(json)
+}
+
+/// enter 请求带的 cookie：**只带 ttwid**
+///
+/// 绝不能掺登录态：那等于告诉抖音「账号从助手进入直播间」，会把网页端（或手机端）的
+/// 观看会话顶掉（真机实测：抖音对同一账号 + 同一直播间只保留一个观看会话）。
+fn enter_cookie_for(ttwid: &str) -> String {
+    format!("ttwid={ttwid}")
 }
 
 /// 从响应头里抠 ttwid
@@ -218,6 +233,14 @@ mod tests {
     #[test]
     fn 没有_id_str_时返回_none() {
         assert!(find_id_str(r#"{"data":{}}"#).is_none());
+    }
+
+    #[test]
+    fn enter_请求只带_ttwid() {
+        // 回归保护：enter 请求掺进登录态会把网页端的观看会话顶掉（真机现象）
+        let got = enter_cookie_for("T1");
+        assert_eq!(got, "ttwid=T1");
+        assert!(!got.contains("sessionid"), "enter 请求绝不能带登录态");
     }
 
     #[test]
