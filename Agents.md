@@ -34,7 +34,7 @@
 - 开发运行：`pnpm tauri dev`（Vite 热更 + Rust 调试一起跑；Rust 改动会自动重编译重启）
 - 仅前端：`pnpm dev`；前端构建：`pnpm build`
 - 打包：`pnpm tauri build`（产物在 `src-tauri/target/release/bundle/nsis/`）
-- 纯 Rust：在 `src-tauri/` 下 `cargo check` / `cargo test --lib`（`-- --ignored` 是 5 个联网测试：Edge TTS 合成、音色列表、时钟偏差恢复、突发失败率、更新检查）
+- 纯 Rust：在 `src-tauri/` 下 `cargo check` / `cargo fmt` / `cargo test --lib`（`-- --ignored` 是 5 个联网测试：Edge TTS 合成、音色列表、时钟偏差恢复、突发失败率、更新检查）；格式化配置是 `src-tauri/rustfmt.toml`（max_width 120、4 空格），改完 Rust 先 `cargo fmt` 再提交，否则 diff 会混入格式噪音
 - **签名 JS 不在仓库里**（第三方产物，见 `probe/README.md`）：新克隆的仓库先跑 `pwsh -File scripts/copy-sign-js.ps1`
 - 探针（都在 `probe/node/`）：`ws-probe.cjs`（协议）、`walk-rooms.cjs`（沿 `similar_rooms` 找正在直播的房间，抓样本用）
   - 含中文的 `.ps1` 必须用 `pwsh` 跑（Windows PowerShell 5.1 会按 GBK 解码无 BOM 的 UTF-8 文件，中文被拆坏后连引号都会解析出错）
