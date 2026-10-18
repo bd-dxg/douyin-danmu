@@ -6,6 +6,8 @@
 //! 直播间的「号」有两个：用户输入的是**短号**（浏览器地址 `live.douyin.com/` 后面那串，
 //! 如 765790908625），WS 只认 19 位**真实 room_id**，由 `resolver` 换一次。
 //! 对外一律用短号（前端展示与最近房间都用它），真实 room_id 只在会话内部用。
+//! 用户也可以直接输**抖音号**：实测（2026-10）`enter` 两样都认，自定义抖音号可以带字母
+//! （`88866kzi` 正常返回房间），所以校验只挡空与非法字符。
 
 use crate::config;
 use crate::douyin::event::DouyinEvent;
@@ -18,12 +20,12 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 
-/// 连接直播间（参数是直播间**短号**，不是 19 位 room_id）
+/// 连接直播间（参数是直播间**短号**或**抖音号**，不是 19 位 room_id）
 #[tauri::command]
 pub(crate) async fn connect_room(app: AppHandle, state: State<'_, AppState>, web_rid: String) -> Result<(), String> {
     let web_rid = web_rid.trim().to_owned();
-    if web_rid.is_empty() || !web_rid.chars().all(|c| c.is_ascii_digit()) {
-        return Err("直播间号应为纯数字（浏览器地址 live.douyin.com/ 后面那串）".into());
+    if web_rid.is_empty() || !web_rid.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("直播间号或抖音号应为数字 / 字母（浏览器地址 live.douyin.com/ 后面那串）".into());
     }
     {
         let mut st = state.status.lock().unwrap();

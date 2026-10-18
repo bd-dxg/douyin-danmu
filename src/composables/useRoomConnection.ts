@@ -33,15 +33,15 @@ export function useRoomConnection() {
 
   const statusText = computed(() => STATUS_TEXT[status.value.state] ?? status.value.state)
 
-  /** 连接直播间；target 为面包屑直连的直播间短号，会回填输入框保证与连接目标一致 */
+  /** 连接直播间；target 为面包屑 / 关注在播直连的直播间号（或抖音号），会回填输入框保证与连接目标一致 */
   async function connect(target?: string) {
     if (target !== undefined) {
       roomId.value = target
     }
     const rid = roomId.value.trim()
-    // 抖音直播间号是纯数字长串（如 765790908625），不做大小判断
-    if (!/^\d{5,25}$/.test(rid)) {
-      errorMsg.value = '请输入直播间号（纯数字，浏览器地址 live.douyin.com/ 后面那串）'
+    // 直播间号是数字长串（如 765790908625），抖音号可以带字母（实测 `88866kzi` 也能连）；不做大小判断
+    if (!/^[0-9a-zA-Z]{5,25}$/.test(rid)) {
+      errorMsg.value = '请输入直播间号或抖音号（数字 / 字母，浏览器地址 live.douyin.com/ 后面那串）'
       return
     }
     errorMsg.value = ''

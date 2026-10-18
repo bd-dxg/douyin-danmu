@@ -45,7 +45,7 @@
 
 - `src/` 前端：`views/`（RoomView 房间、DanmakuView 弹幕、TtsView 朗读、StreamerView 主播分区、AboutView 关于）、`components/`（`FollowingLiveRooms.vue` 关注在播）、`composables/`、`overlay/`（悬浮层入口 + 单行渲染 + `MetaBadges.vue` 徽章列 + `row-style.ts` 描边）、`sender/`（弹幕窗下方的**穿透小控件**；发送弹幕未实现，无输入框）、`styles/settings.css`、`types/ipc.ts``
 - `src-tauri/src/`：`lib.rs`（组装）、`state.rs`、`commands.rs`、`connection.rs`（会话循环 + 重连）、`window.rs`（窗口与穿透小控件吸附）、`gift.rs`（礼物列表：门槛 + 合并）、`welcome.rs`（欢迎信息：去重限速）、`tts/`（队列 `mod.rs`、文案 `text.rs`、礼物聚合 `gift.rs`、流水线 `worker.rs`、播放 `player.rs`、协议 `edge.rs`）、`config/`（读写 + 结构体 + DPAPI）、`update.rs`
-- `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`emote.rs`（表情弹幕解析）、`live.rs`（关注在播的数据源）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（登录页：建窗 / 读 Cookie / 等扫码）、`login_helper.rs`（登录子进程入口）、`event.rs`（事件模型）
+- `src-tauri/src/douyin/`：`proto.rs`（手写 varint / 解帧 / ack / 心跳）、`parser.rs`（method → 事件）、`emote.rs`（表情弹幕解析）、`live.rs`（关注在播 + 我的直播间）、`resolver.rs`（短号 → room_id/ttwid/主播名）、`sign.rs`（13 参数拼串 + md5 + `Signer` trait）、`signer.rs`（隐藏 WebView2 签名器 + 命令回包路由）、`ws.rs`（单次会话 + 重连策略）、`login.rs`（登录页：建窗 / 读 Cookie / 等扫码）、`login_helper.rs`（登录子进程入口）、`event.rs`（事件模型）
 - 多窗口：`index.html`（主窗）+ `overlay.html` + `sign.html`（隐藏签名页）+ 登录子进程自建的登录窗（label `login`）；`sender.html` 是弹幕窗下方的**穿透小控件**（`lib.rs` 的 `SENDER_WINDOW_ENABLED = true`）—— 发送弹幕不做（见上表），窗口里只放一个穿透开关；穿透开启后弹幕窗收不到鼠标事件，必须靠这个独立窗口才能关回来。Tauri 配置见 `src-tauri/tauri.conf.json` 与 `capabilities/default.json`（新增窗口要加进 `windows` 列表）
 - **主窗不在 `tauri.conf.json` 里定义**（`app.windows` 是空的，改在 `lib.rs` 的 setup 里建）：那个数组是整个 exe 共用的，helper 模式下也会被自动建出来，而 helper 的 WebView2 必须用独立 user data folder，自动建的窗口设不了 `data_directory`
 
@@ -78,6 +78,7 @@
 12. **`additional_browser_args` 会整串替换 wry 的默认参数**：默认是 `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`，自己传参时必须把它带上
 13. **关注在播走 `POST https://www.douyin.com/webcast/feed/follow_top/`，不需要签名**：query 只要 `device_platform=webapp&aid=6383&channel=channel_pc_web`，body 只要 `source_key=web_homepage_follow_top&follow_session_id=<游标>`（页面真实请求里的 `a_bogus` / `msToken` / `uifid` / `x-secsdk-csrf-token` 全可省）。少了 body 里的 `source_key` 就回 `10011 Request params error`，**别往签名上排查**。返回里 `data[].owner.nickname` 是主播名、`web_rid` 是**直播间短号**（不是抖音号）、`data.id_str` 是真实 room_id，翻页看 `extra.follow_session_id` / `extra.has_more`
 14. **`enter` 请求绝不能带登录 cookie**（`resolver.rs` 的 `enter_cookie_for`，有单测卡着）：抖音对「同一账号 + 同一直播间」只保留一个观看会话 —— 手机端与网页端进同一直播间也会互相顶（实测）。带登录态调 `enter` 等于让账号「从助手进入直播间」，结果是把网页端的观看会话顶掉（真机现象：助手一连上网页就弹「账号已在其他地方进入直播间」）；匿名调它我们什么也不少（`room_id` / 主播名 / 开播状态匿名一样给）。登录态只交给 WS，礼物只在登录态下推
+15. **「我的直播间」靠 `profile/self` 拿抖音号**（`live.rs` 的 `fetch_self_user`）：`GET https://www.douyin.com/aweme/v1/web/user/profile/self/`（只带登录 cookie，**不需要签名**）→ `user.unique_id` 就是抖音号（自定义过的抖音号可能是字母，那就用永远是数字的 `short_id`），而 `enter` **认抖音号当 `web_rid`**（实测 `data.user.id_str` 与自己的 `uid` 一致），于是自己那条直接用抖音号走既有连接流程。三条别搞错：`enter` **不认 uid、也不认 room_id**（都回 `4001038`）；抖音**没有** B 站那种「按 uid 查开播状态」的接口，而 `profile/self` / `profile/other` 的 `room_id_str` **未开播就归 0**（实测：已下播但房间还在的号也是 0），所以这条**不看开播状态**，房间不存在时靠 `resolver` 的正常报错收场。注：抖音号可以是字母（实测 `88866kzi`，`enter` 与 `live.douyin.com/{抖音号}` 都认），所以 `connect_room` 与输入框的校验是**数字 / 字母都收**——别再改回纯数字，否则自定义抖音号的主播看不到「我的直播间」（带 `_` 的抖音号不收）
 
 ## 身份徽章（等级 / 灯牌）的字段口径
 

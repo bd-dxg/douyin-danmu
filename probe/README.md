@@ -124,6 +124,40 @@ www 关注页「正在直播(N)」那一块的接口，一个请求就能拿到�
 
 → 已被 `follow_top` 取代。
 
+## 「我的直播间」（自己 + 别人的主页，已实测）
+
+主界面「关注在播」首位那条固定文案「我的直播间」，靠下面这组实测拼出来（都是临时 PowerShell 探针直接 GET，未留脚本）。
+
+### 自己是谁：`profile/self`
+
+| 环节 | 结论 |
+| --- | --- |
+| 接口 | `GET https://www.douyin.com/aweme/v1/web/user/profile/self/?device_platform=webapp&aid=6383&channel=channel_pc_web`，带登录 Cookie，**不需要签名**（`a_bogus` / `msToken` 都不给也回 `status_code: 0`） |
+| 返回字段 | `user.uid`（**字符串**形态）/ `user.nickname` / `user.unique_id`（= **抖音号**）/ `user.short_id` / `user.live_status` / `user.room_id` / `user.room_id_str`；未登录回 `status_code: 8`「用户未登录」 |
+| 别人同款 | 换 `profile/other/?sec_user_id=<sec_uid>`（就是个人主页地址那串）字段一模一样，而且**匿名（只带 ttwid）也能查**：开播中的主播 `live_status=1`、`room_id_str` 就是真实 19 位 room_id（实测 十叁哥 → `7697605570416659235`） |
+
+### `room_id_str` 当不了「有没有房间」的判据（实测）
+
+| 账号 | 实际情况 | `live_status` / `room_id_str` |
+| --- | --- | --- |
+| 冰冻大西瓜 | 从未开播，无房间 | `0` / `"0"` |
+| 贱贱 | 有房间（`enter` 仍认得出旧房间 `7697599161746983716`，`status=4` 已结束），但已下播 | `0` / `"0"` |
+
+→ **未开播就归 0**（房间对象还在也没用）。拿它当门槛反而会把「开播前先连上自己房间」这个主场景挡掉，所以这一条**不看开播状态**，房间真不存在时点击就走 `resolver` 的正常报错（「没有解析出房间号…」）。这一点与 B 站相反：B 站 `get_status_info_by_uids` 对未开播的 uid 照样给真实 `room_id`。
+
+### 拿去连接的「号」：抖音号
+
+| 结论 | 实测 |
+| --- | --- |
+| `enter` **认抖音号** | `enter&web_rid=45364297796` 的 `data.user.id_str` 与 `profile/self` 的 `uid` 一致（账号 冰冻大西瓜）；`enter&web_rid=62876576864` 认出 贱贱（那是他的 `unique_id`） |
+| `enter` 也认直播间短号 | 同一账号用真 `web_rid`（`follow_top` 给的 `639280210755`）与抖音号两种写法返回同一个 room |
+| `enter` **不认 uid** | `web_rid=1720053578867822` 回 `status_code=4001038` |
+| `enter` **不认 room_id** | `web_rid=7697605570416659235`（真实房间号）同样回 `4001038` —— 所以拿到 `room_id_str` 也塞不进「短号 → room_id」那条流程 |
+| 标识不固定在哪一个字段 | 贱贱 `unique_id=62876576864` / `short_id=0`；十叁哥反过来（字母 `unique_id=88866kzi` / `short_id=0`）—— 取标识得「两个里挑数字/字母的那个」 |
+| 抖音号可以是**字母** | 十叁哥 `unique_id=88866kzi`：`enter&web_rid=88866kzi` 正常返回他的房间，`live.douyin.com/88866kzi` 也是 HTTP 200 + 带 ttwid（resolver 第 1 步没问题）。所以 `connect_room` 与输入框的校验是**数字 / 字母都收**；带 `_` 这类符号的抖音号不收 |
+
+所以「我的直播间」= 抖音号（`unique_id`，空了用 `short_id`）当短号，走项目既有的「短号 → room_id」流程 —— 用户手输抖音号也一样能连。
+
 ## 怎么复跑
 
 ```powershell
