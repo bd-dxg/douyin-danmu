@@ -25,7 +25,7 @@
 
 - 前端：Vue 3（`<script setup>`）+ Vite + TypeScript，包管理 pnpm
 - 桌面壳：Tauri 2（Rust，edition 2021）
-- Rust 关键依赖：tokio / reqwest（json、gzip）/ tokio-tungstenite（弹幕 WS + Edge TTS WS）/ native-tls（Edge TTS 自建 TCP 后包 TLS）/ futures-util / flate2（弹幕 gzip）/ md-5（签名素材）/ sha2（随机 hex / ConnectionId 生成）/ windows-sys（DPAPI、winmm 播放、ShellExecuteW）/ tauri-plugin-log
+- Rust 关键依赖：tokio / reqwest（json、gzip）/ tokio-tungstenite（弹幕 WS + Edge TTS WS）/ native-tls（Edge TTS 自建 TCP 后包 TLS）/ futures-util / flate2（弹幕 gzip）/ md-5（签名素材）/ sha2（随机 hex / ConnectionId 生成）/ windows-sys（DPAPI、winmm 播放、ShellExecuteW）/ tauri-plugin-log / tauri-plugin-updater（自动更新：检查 / 下载 / minisign 验签 / NSIS 静默安装重启）
 - 授权：GPL-3.0
 
 ## 常用命令
@@ -34,7 +34,7 @@
 - 开发运行：`pnpm tauri dev`（Vite 热更 + Rust 调试一起跑；Rust 改动会自动重编译重启）
 - 仅前端：`pnpm dev`；前端构建：`pnpm build`
 - 打包：`pnpm tauri build`（产物在 `src-tauri/target/release/bundle/nsis/`）
-- 纯 Rust：在 `src-tauri/` 下 `cargo check` / `cargo fmt` / `cargo test --lib`（`-- --ignored` 是 5 个联网测试：Edge TTS 合成、音色列表、时钟偏差恢复、突发失败率、更新检查）；格式化配置是 `src-tauri/rustfmt.toml`（max_width 120、4 空格），改完 Rust 先 `cargo fmt` 再提交，否则 diff 会混入格式噪音
+- 纯 Rust：在 `src-tauri/` 下 `cargo check` / `cargo fmt` / `cargo test --lib`（`-- --ignored` 是 5 个联网测试：Edge TTS 合成、音色列表、时钟偏差恢复、突发失败率、更新清单）；格式化配置是 `src-tauri/rustfmt.toml`（max_width 120、4 空格），改完 Rust 先 `cargo fmt` 再提交，否则 diff 会混入格式噪音
 - **签名 JS 不在仓库里**（第三方产物，见 `probe/README.md`）：新克隆的仓库先跑 `pwsh -File scripts/copy-sign-js.ps1`
 - 探针（都在 `probe/node/`）：`ws-probe.cjs`（协议）、`walk-rooms.cjs`（沿 `similar_rooms` 找正在直播的房间，抓样本用）
   - 含中文的 `.ps1` 必须用 `pwsh` 跑（Windows PowerShell 5.1 会按 GBK 解码无 BOM 的 UTF-8 文件，中文被拆坏后连引号都会解析出错）
@@ -116,7 +116,21 @@
 
 - 禁止在 `main` 上直接开发：功能 / 修复 / 重构先切分支（`feature/` / `fix/` / `refactor/`），完成后开 PR、squash 合并回 `main`；**只有版本号提升、README / 文档这类收尾可直接提交 `main`**
 - 版本号同步 3 处：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`（`Cargo.lock` 由构建自动更新）
-- 流程：改版本 → commit（`🚀 应用版本号升至 X.Y.Z（…）`）→ 推 `main` → `pnpm tauri build` → `gh release create`
+- 流程：改版本 → commit（`🚀 应用版本号升至 X.Y.Z（…）`）→ 推 `main` → `pnpm tauri build`（**必须带签名密钥**）→ 生成 `latest.json` → `gh release create`
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = "$env:USERPROFILE\.tauri\douyin-danmu.key"   # 私钥不进仓库；值是文件路径即可
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""   # 空密码也要显式设：只设上面那个，CLI 会弹密码提示并永久等输入
+pnpm tauri build
+pwsh scripts/gen-latest-json.ps1 -Version 0.3.0   # 生成 latest.json（顺带校验版本号三处已同步）
+```
+
+- 自动更新靠 `latest.json` 当端点内容，**每次发布都要把它和 exe / exe.sig 一起上传**；漏传 = 用户那边「检查更新失败」
+- 打包时必须**同时**设 `TAURI_SIGNING_PRIVATE_KEY`（私钥路径）与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（空密码就写空串）：只设前者时 CLI 会停在 `Decrypting updater signing key, expect a prompt for password` 等输入，表现为「构建莫名其妙卡了很久」
+- `@tauri-apps/cli` 必须 >= 2.12.3：只有它会在 updater 签名里写 `version` 字段，而 `requireSignedVersion` 开着时客户端靠这个字段挡降级——旧 CLI 签出的签名（没有 version）会被**直接拒绝**，现象是「下载完装不上」
+- 更新走加速镜像（`gh-proxy.org` 等三个 + GitHub 直连兜底），端点写在 `src-tauri/tauri.conf.json` 的 `plugins.updater.endpoints`：**改端点要发版**，所以要增删镜像得连同版本号一起走流程
+- `tauri-plugin-updater` 的 Rust 依赖锁在 `~2.12`、npm 包锁在 `2.12.0`：上游 2.13+ 要求 tauri ^2.12，而 tauri 还停在 2.11.5（升 tauri 会连带换掉 wry / tao，悬浮窗最脆，单独一个 PR 再动）。两边版本号要一致，tauri CLI 在 build 时会校验
+- 安装包路径：`src-tauri/target/release/bundle/nsis/douyin-danmu_<版本>_x64-setup.exe`
 - 打包前确认应用没在运行（NSIS 写 exe 会失败）；`gh release create` 的 tag 只建在远端，本地要 `git fetch --tags`
 - 历史一律 squash 合并（main 上每个 PR 一个带 `(#N)` 的 commit）：`gh pr merge --squash` **别传 `--subject`**，否则 GitHub 不会自动追加 `(#N)`
 
@@ -130,3 +144,6 @@
 - 配置与日志目录：`%APPDATA%\com.douyindanmu.app\config.json`、`%LOCALAPPDATA%\com.douyindanmu.app\logs\douyin-danmu.log`
 - 房间不在直播时（响应里 `status != 2`）WS 仍能连上但基本没消息：`connection.rs` 会打一条 warn，别把「连上了没弹幕」当 bug 查
 - 抖音的「用户等级」筛选开着会滤掉大部分弹幕（没消费过的观众没有等级）——这是设计使然，不是 bug
+- 自动更新：检查 / 下载 / 验签 / 安装全在 `tauri-plugin-updater`，**前端不要自己拼版本比较或调 relaunch**——Windows 上插件把安装包交给 NSIS 后直接 `process::exit(0)`，由安装器（passive + `/R`）装完重启；清单端点与 minisign 公钥在 `tauri.conf.json` 的 `plugins.updater`，权限单独放在 `capabilities/updater.json` 且只给主窗口
+- 防降级：`plugins.updater.requireSignedVersion` 开着（前提：CLI >= 2.12.3，签名里才会带 `version`）。篡改清单把「新版本号 + 旧发布包」拼在一起会被客户端拒装；`gen-latest-json.ps1` 会校验签名绑定的版本与清单一致
+- 更新提示位置：侧边栏「关于软件」的红点 + 关于页胶囊按钮（一个按钮承载检查 / 下载 x% / 安装中）。**不往弹幕窗提示**——弹幕窗会被 OBS 采集上镜
