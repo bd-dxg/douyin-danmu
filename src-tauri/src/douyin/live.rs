@@ -16,12 +16,26 @@
 //! 早先用的是两步（关注列表 `/webcast/user/follow/list/` + 逐个 uid 探活
 //! `/webcast/distribution/check_user_live_status/`），已废弃：那个探活接口**一次只认第一个
 //! uid**，关注 500 人就得打 500 个请求。
+//!
+//! **「我的直播间」（登录者自己）走另一个接口** `GET https://www.douyin.com/aweme/v1/web/user/profile/self/`
+//! （只带登录 Cookie，不需要签名）：返回 `user.uid` / `user.nickname` / `user.unique_id`（= **抖音号**）。
+//! 实测（2026-10）：`enter` 接口把**抖音号**当 `web_rid` 一样认
+//! （`enter&web_rid=<抖音号>` 解析出的 `data.user.id_str` 与 `profile/self` 的 `uid` 一致；`enter` 还认短号，
+//! 但**不认 uid** —— 传 uid 回 `status_code=4001038`）。所以「我的直播间」那条直接拿抖音号当短号交给
+//! `connect_room`，主播开播前也能先把软件连上自己的房间。抖音号可能是字母（实测主播 `88866kzi`，
+//! `enter` 与 `live.douyin.com/{抖音号}` 都认），所以 `connect_room` 也改成了数字 / 字母都收。
+//! 抖音**没有**「按 uid 查开播状态」这类接口，「有没有房间」也无从得知：`profile/self` 的 `room_id_str`
+//! **只在开播中有值**（实测：已下播的房间，主人自己的资料里也是 `0`），所以这一条**不看开播状态** ——
+//! 房间真不存在时点击会走 `resolver` 的正常报错。
 
 use reqwest::Client;
 use std::collections::HashSet;
 
 /// 关注在播列表接口（www.douyin.com；`device_platform=webapp` 是它的必填 query）
 const FOLLOW_TOP_URL: &str = "https://www.douyin.com/webcast/feed/follow_top/\
+?device_platform=webapp&aid=6383&channel=channel_pc_web";
+/// 「我自己」的资料接口（抖音号在 `user.unique_id` 里）——只带登录 Cookie，不需要签名
+const PROFILE_SELF_URL: &str = "https://www.douyin.com/aweme/v1/web/user/profile/self/\
 ?device_platform=webapp&aid=6383&channel=channel_pc_web";
 /// body 里的场景标识（必填：少了它服务端回 `Request params error`）
 const SOURCE_KEY: &str = "web_homepage_follow_top";
@@ -44,6 +58,20 @@ pub struct FollowingLive {
     pub web_rid: String,
     /// 真实 room_id（19 位，仅用于界面上标明是哪个房间）
     pub room_id: String,
+    /// 是否是登录者本人的直播间（前端固定显示「我的直播间」）
+    pub is_self: bool,
+}
+
+/// `profile/self` 里属于「我自己」的部分（内部结构，不对外序列化）
+struct SelfUser {
+    /// 自己的 uid（用于把关注列表里可能出现自己的那条去掉）
+    uid: i64,
+    /// 自己的昵称（前端固定显示「我的直播间」，此字段仅作结构完整）
+    uname: String,
+    /// 抖音号（`unique_id`，空了回退 `short_id`）——实测 `enter` 接受它当 `web_rid` 用
+    rid: String,
+    /// `room_id_str`（没开过播是 `"0"`，仅作结构完整）
+    room_id: String,
 }
 
 /// 请求这些接口用的客户端（超时短一点：界面上是「查询中…」，卡住要让用户早看到结果）
@@ -55,7 +83,19 @@ pub fn http_client() -> Client {
 }
 
 /// 拉一次「已关注且正在开播」的列表（自己在播的主播有变动时按 `follow_session_id` 翻页）
+///
+/// 登录者自己的直播间固定排第一位（固定文案「我的直播间」，见 `fetch_self_user`）；
+/// 查询失败只 warn，不影响关注列表。
 pub async fn list_following_live(client: &Client, cookies: &str) -> Result<Vec<FollowingLive>, String> {
+    // 自己的直播间：拿不到就只是少这一条
+    let me = match fetch_self_user(client, cookies).await {
+        Ok(u) => Some(u),
+        Err(e) => {
+            log::warn!("[live] 查询自己的直播间失败，本次不显示「我的直播间」：{e}");
+            None
+        }
+    };
+
     let mut out: Vec<FollowingLive> = Vec::new();
     let mut seen: HashSet<i64> = HashSet::new();
     let mut cursor = 0i64;
@@ -89,7 +129,91 @@ pub async fn list_following_live(client: &Client, cookies: &str) -> Result<Vec<F
         }
         cursor = page.cursor;
     }
+
+    if let Some(me) = me {
+        // 万一自己出现在关注列表里（关注了自己），避免与「我的直播间」重复
+        out.retain(|f| f.uid != me.uid);
+        out.insert(
+            0,
+            FollowingLive {
+                uid: me.uid,
+                uname: me.uname,
+                web_rid: me.rid,
+                room_id: me.room_id,
+                is_self: true,
+            },
+        );
+    }
     Ok(out)
+}
+
+/// 查询登录者自己的直播间信息（昵称 + 抖音号）
+///
+/// 抖音**没有**「我的直播间」专用接口，但 `profile/self` 返回的 `unique_id` 就是抖音号，而 `enter`
+/// 接受抖音号当 `web_rid`（实测），于是「我的直播间」= 用抖音号走既有的连接流程。
+/// 这也是抖音侧唯一可行的自动方案：`room_id` 只有 `room_id_str` 这一处（没开过播就是 `0`），
+/// 「按 uid 查开播状态」的接口不存在（见模块头注释）。
+async fn fetch_self_user(client: &Client, cookies: &str) -> Result<SelfUser, String> {
+    let resp = client
+        .get(PROFILE_SELF_URL)
+        .header("user-agent", UA)
+        .header("referer", "https://www.douyin.com/")
+        .header("accept", "application/json, text/plain, */*")
+        .header("cookie", cookies)
+        .send()
+        .await
+        .map_err(|e| format!("请求抖音失败：{e}"))?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("抖音响应解析失败：{e}"))?;
+    ok_data(&resp)?; // 未登录 / 风控在这里回非零业务码
+    parse_self_user(&resp).ok_or_else(|| "响应里没有自己的 uid / 抖音号".to_owned())
+}
+
+/// 解 `profile/self` 的 `user`：要 uid、昵称、抖音号
+///
+/// 连接标识取 `unique_id`（抖音号）/ `short_id` 里**只含数字与字母**的那个（优先 `unique_id`）：
+/// 抖音号可以带字母（实测主播 `88866kzi`，`enter` 也认），所以字母不排；`_` 之类符号排掉
+/// （`connect_room` 同样不收）。两个都不合法就没法连接（`enter` 又不认 uid），返回 None。
+fn parse_self_user(v: &serde_json::Value) -> Option<SelfUser> {
+    let user = v.get("user")?;
+    let uid = user.get("uid").and_then(json_i64)?;
+    let rid = [user.get("unique_id"), user.get("short_id")]
+        .into_iter()
+        .flatten()
+        .filter_map(json_id_str)
+        .find(|s| s.chars().all(|c| c.is_ascii_alphanumeric()))?;
+    let uname = user
+        .get("nickname")
+        .and_then(|n| n.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_owned();
+    let room_id = user
+        .get("room_id_str")
+        .and_then(json_id_str)
+        .unwrap_or_else(|| "0".to_owned());
+    Some(SelfUser {
+        uid,
+        uname,
+        rid,
+        room_id,
+    })
+}
+
+/// 数字字段既有数字也有字符串两种形态（`uid` 实测是字符串）
+fn json_i64(v: &serde_json::Value) -> Option<i64> {
+    v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+}
+
+/// 取一个非空、非 `"0"` 的标识（抖音号 / `short_id` / `room_id_str` 都可能给 0）
+fn json_id_str(v: &serde_json::Value) -> Option<String> {
+    let s = match v {
+        serde_json::Value::String(s) => s.trim().to_owned(),
+        serde_json::Value::Number(n) => n.to_string(),
+        _ => return None,
+    };
+    (!s.is_empty() && s != "0").then_some(s)
 }
 
 /// 「关注在播」的一页
@@ -141,6 +265,7 @@ fn parse_item(item: &serde_json::Value) -> Option<FollowingLive> {
         uname: uname.to_owned(),
         web_rid: web_rid.to_owned(),
         room_id: room_id.to_owned(),
+        is_self: false,
     })
 }
 
@@ -238,5 +363,63 @@ mod tests {
         });
         let page = parse_page(&v).unwrap();
         assert_eq!(page.items[0].uid, 888);
+    }
+
+    #[test]
+    fn 从_profile_self_里解出自己的抖音号与昵称() {
+        // 真机样本裁剪版（2026-10）：`uid` 是**字符串**，`short_id` 是数字，`room_id_str` 没开过播是 "0"
+        let v = json!({
+            "status_code": 0,
+            "user": {
+                "uid": "1720053578867822",
+                "nickname": "冰冻大西瓜",
+                "unique_id": "45364297796",
+                "short_id": 45364297796u64,
+                "room_id": 0,
+                "room_id_str": "0"
+            }
+        });
+        let me = parse_self_user(&v).unwrap();
+        assert_eq!(me.uid, 1720053578867822);
+        assert_eq!(me.uname, "冰冻大西瓜");
+        assert_eq!(me.rid, "45364297796");
+        assert_eq!(me.room_id, "0");
+    }
+
+    #[test]
+    fn 抖音号为空时回退_short_id() {
+        let v = json!({
+            "user": { "uid": 123i64, "nickname": "A", "unique_id": "", "short_id": 62876576864u64 }
+        });
+        assert_eq!(parse_self_user(&v).unwrap().rid, "62876576864");
+    }
+
+    #[test]
+    fn 自定义的字母抖音号回退_short_id() {
+        // 抖音号是字母但有 short_id 照样能连（enter 认字母抖音号，但 connect_room 先要数字）
+        let v = json!({
+            "user": { "uid": 123i64, "nickname": "A", "unique_id": "dxg_2026", "short_id": 62876576864u64 }
+        });
+        assert_eq!(parse_self_user(&v).unwrap().rid, "62876576864");
+    }
+
+    #[test]
+    fn 字母抖音号也收() {
+        // 真机样本：主播「十叁哥」unique_id=88866kzi（字母）、short_id=0 —— enter 认字母抖音号
+        let v = json!({
+            "user": { "uid": 3362784085812995i64, "nickname": "十叁哥（和平pc）", "unique_id": "88866kzi", "short_id": 0 }
+        });
+        assert_eq!(parse_self_user(&v).unwrap().rid, "88866kzi");
+    }
+
+    #[test]
+    fn 标识带符号时_不给自己那条() {
+        // 抖音号里的 `_` 这类符号 connect_room 不收，宁可不显示（两个候选都不合法）
+        let v = json!({
+            "user": { "uid": 123i64, "nickname": "A", "unique_id": "dxg_2026", "short_id": 0 }
+        });
+        assert!(parse_self_user(&v).is_none());
+        // 风控 / 未登录时 user 是空壳
+        assert!(parse_self_user(&json!({ "user": {} })).is_none());
     }
 }

@@ -38,9 +38,15 @@ async function handleLogin() {
   }
 }
 
-/** 输入框只留数字：抖音直播间号是纯数字长串，从地址栏粘贴时常带空格或整个链接 */
+/** 输入框只留数字与字母：直播间号是数字长串，抖音号可以带字母；从地址栏/分享粘整条链接时只取最后一段 */
 function onRoomInput(e: Event) {
-  roomId.value = (e.target as HTMLInputElement).value.replace(/\D/g, '')
+  const raw = (e.target as HTMLInputElement).value
+  const tail =
+    raw
+      .split(/[/?#\s]+/)
+      .filter(Boolean)
+      .pop() ?? ''
+  roomId.value = tail.replace(/[^0-9a-zA-Z]/g, '')
 }
 </script>
 
@@ -68,8 +74,7 @@ function onRoomInput(e: Event) {
         :value="roomId"
         class="room-input"
         type="text"
-        inputmode="numeric"
-        placeholder="输入直播间号，如 765790908625"
+        placeholder="输入直播间号 / 抖音号，如 765790908625"
         :disabled="locked"
         @input="onRoomInput" />
       <button v-if="status.state === 'connected'" class="btn danger" :disabled="busy" @click="disconnect">断开</button>

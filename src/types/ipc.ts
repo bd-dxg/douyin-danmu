@@ -171,16 +171,18 @@ export interface RecentRoom {
   uname?: string | null
 }
 
-/** 已关注且正在开播的主播（主界面「关注在播」手动刷新） */
+/** 已关注且正在开播的主播（主界面「关注在播」手动刷新；首条是登录者自己） */
 export interface FollowingLive {
   /** 主播 uid */
   uid: number
-  /** 主播昵称（取自关注列表） */
+  /** 主播昵称（取自关注列表；自己那条前端不显示昵称） */
   uname: string
-  /** 直播间短号（接口返回的 web_rid）：点击直连时交给 connect_room */
+  /** 直播间短号（接口返回的 web_rid；自己那条是抖音号）：点击直连时交给 connect_room */
   web_rid: string
-  /** 真实 room_id（19 位，仅用于标明是哪个房间） */
+  /** 真实 room_id（19 位，仅用于标明是哪个房间；自己那条没开过播时是 "0"） */
   room_id: string
+  /** 是否登录者本人的直播间（固定显示「我的直播间」，排第一位） */
+  is_self: boolean
 }
 
 /** 弹幕过滤配置（Rust ↔ Vue，事件名 danmaku-filter） */
