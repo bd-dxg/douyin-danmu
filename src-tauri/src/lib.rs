@@ -78,6 +78,9 @@ pub fn run() {
                 .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                 .build()
         })
+        // 自动更新：端点（国内加速优先、GitHub 直连兜底）、公钥、Windows 安装模式
+        // 都在 tauri.conf.json 的 plugins.updater 里，这里不另传参数
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             status: Mutex::new(state::RoomStatus::Disconnected),
             cancel: Mutex::new(None),
@@ -308,7 +311,6 @@ pub fn run() {
             commands::get_recent_rooms,
             commands::overlay_get_size,
             commands::overlay_set_size,
-            update::check_update,
             update::open_url,
             commands::open_log_dir,
             douyin::signer::douyin_sign_reply,
