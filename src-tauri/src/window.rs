@@ -11,6 +11,10 @@ pub(crate) fn overlay_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.get_webview_window("overlay")
 }
 
+/// Overlay 建窗默认尺寸（逻辑像素）：建窗时用它，窗口还没建好时也用它回包
+pub(crate) const DEFAULT_OVERLAY_W: f64 = 700.0;
+pub(crate) const DEFAULT_OVERLAY_H: f64 = 400.0;
+
 /// 获取 Sender 窗口实例（不存在返回 None）
 pub(crate) fn sender_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.get_webview_window("sender")

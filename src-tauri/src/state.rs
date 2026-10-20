@@ -69,6 +69,12 @@ pub(crate) fn clear_danmaku_ticks(app: &AppHandle) {
 
 /// Overlay 窗口状态（供 UI 同步开关与弹幕样式）
 pub(crate) struct OverlayState {
+    /// 弹幕窗是否可见。
+    ///
+    /// 不用 `win.is_visible()` 现查：窗口是 setup 里建的，主界面 Vue 挂载可能比它更早
+    /// （首次安装 WebView2 冷启动尤其明显），现查会拿到「窗口还没建 → false」，
+    /// 表现为「弹幕窗明明显示着，设置里的开关却是关的」。内存态初值与建窗时的显示状态一致。
+    pub(crate) visible: Mutex<bool>,
     pub(crate) clickthrough: Mutex<bool>,
     /// 始终置顶（窗口 API 无 getter，需内存态供仪表盘读取；初值与创建窗口时一致）
     pub(crate) always_on_top: Mutex<bool>,
@@ -88,6 +94,7 @@ pub(crate) struct OverlayState {
 impl Default for OverlayState {
     fn default() -> Self {
         Self {
+            visible: Mutex::new(true),
             clickthrough: Mutex::new(false),
             always_on_top: Mutex::new(true),
             style: Mutex::new(config::OverlayStyle::default()),

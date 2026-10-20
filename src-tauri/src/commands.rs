@@ -7,7 +7,7 @@ use crate::config;
 use crate::douyin::login_helper::{COOKIE_PREFIX, LOGIN_HELPER_ARG};
 use crate::state::{prune_ticks, AppState, OverlayState};
 use crate::tts;
-use crate::window::{overlay_window, sync_sender_docked};
+use crate::window::{overlay_window, sync_sender_docked, DEFAULT_OVERLAY_H, DEFAULT_OVERLAY_W};
 use serde_json::json;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -19,13 +19,18 @@ pub(crate) fn ping() -> String {
 
 /// 显示 / 隐藏 Overlay（返回新可见状态）
 #[tauri::command]
-pub(crate) fn overlay_set_visible(app: AppHandle, visible: bool) -> Result<bool, String> {
+pub(crate) fn overlay_set_visible(
+    app: AppHandle,
+    state: State<'_, OverlayState>,
+    visible: bool,
+) -> Result<bool, String> {
     let win = overlay_window(&app).ok_or("Overlay 窗口未创建")?;
     if visible {
         win.show().map_err(|e| format!("显示失败: {e}"))?;
     } else {
         win.hide().map_err(|e| format!("隐藏失败: {e}"))?;
     }
+    *state.visible.lock().unwrap() = visible;
     Ok(visible)
 }
 
@@ -49,10 +54,10 @@ pub(crate) fn overlay_get_clickthrough(state: State<'_, OverlayState>) -> bool {
     *state.clickthrough.lock().unwrap()
 }
 
-/// 查询 Overlay 是否可见
+/// 查询 Overlay 是否可见（读内存态，理由见 `OverlayState::visible`）
 #[tauri::command]
-pub(crate) fn overlay_is_visible(app: AppHandle) -> bool {
-    overlay_window(&app).and_then(|w| w.is_visible().ok()).unwrap_or(false)
+pub(crate) fn overlay_is_visible(state: State<'_, OverlayState>) -> bool {
+    *state.visible.lock().unwrap()
 }
 
 /// 开关始终置顶
@@ -75,7 +80,7 @@ pub(crate) fn get_dashboard_status(app: AppHandle) -> serde_json::Value {
     let overlay = {
         let st = app.state::<OverlayState>();
         json!({
-            "visible": overlay_window(&app).and_then(|w| w.is_visible().ok()).unwrap_or(false),
+            "visible": *st.visible.lock().unwrap(),
             "clickthrough": *st.clickthrough.lock().unwrap(),
             "always_on_top": *st.always_on_top.lock().unwrap(),
         })
@@ -195,8 +200,16 @@ pub(crate) fn welcome_set_config(
 
 /// 查询 Overlay 当前尺寸（逻辑像素，与 overlay_set_size 同一口径）
 #[tauri::command]
-pub(crate) fn overlay_get_size(app: AppHandle) -> Result<serde_json::Value, String> {
-    let win = overlay_window(&app).ok_or("Overlay 窗口未创建")?;
+pub(crate) fn overlay_get_size(app: AppHandle, state: State<'_, OverlayState>) -> Result<serde_json::Value, String> {
+    // 窗口可能还没建好（主界面加载比 setup 建窗更快，首次安装尤其明显）：
+    // 此时回退到建窗时已经落下的内存态尺寸，滑块才不会显示错
+    let Some(win) = overlay_window(&app) else {
+        let b = *state.bounds.lock().unwrap();
+        return Ok(match b {
+            Some(b) => json!({ "width": b.w.round(), "height": b.h.round() }),
+            None => json!({ "width": DEFAULT_OVERLAY_W, "height": DEFAULT_OVERLAY_H }),
+        });
+    };
     let scale = win.scale_factor().map_err(|e| format!("读取缩放失败: {e}"))?;
     // inner_size 是物理像素，高 DPI 下得先换算，否则滑块显示的数会比实际小
     let size = win
