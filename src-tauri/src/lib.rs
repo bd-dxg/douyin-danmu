@@ -25,7 +25,7 @@ use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
-use window::{capture_overlay_bounds, flush_overlay_bounds, sync_sender_docked};
+use window::{capture_overlay_bounds, flush_overlay_bounds, sync_sender_docked, DEFAULT_OVERLAY_H, DEFAULT_OVERLAY_W};
 
 /// 是否创建底部吸附小窗（label `sender`）
 ///
@@ -153,7 +153,7 @@ pub fn run() {
             // Overlay：透明 / 无边框 / 置顶 / 可调整 / 跳过任务栏，恢复上次位置
             let mut win_builder = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
                 .title("douyin-danmu overlay")
-                .inner_size(700.0, 400.0)
+                .inner_size(DEFAULT_OVERLAY_W, DEFAULT_OVERLAY_H)
                 .position(80.0, 80.0)
                 .decorations(false)
                 .transparent(true)
@@ -166,6 +166,9 @@ pub fn run() {
                 win_builder = win_builder.position(b.x, b.y).inner_size(b.w, b.h);
             }
             if let Ok(win) = win_builder.build() {
+                // 建窗即显示：先把内存态写成与之一致，前端此刻还没读到也能拿到真实值
+                *app.state::<OverlayState>().visible.lock().unwrap() = true;
+                capture_overlay_bounds(app.handle());
                 let app2 = app.handle().clone();
                 win.on_window_event(move |event| {
                     if matches!(event, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
@@ -175,6 +178,7 @@ pub fn run() {
                     }
                 });
             } else {
+                *app.state::<OverlayState>().visible.lock().unwrap() = false;
                 log::error!("[overlay] 创建失败");
             }
             // 周期落盘窗口位置（拖动/缩放中去重保存）
